@@ -1,0 +1,45 @@
+# ===== CareerPilot — Docker Compose =====
+# Run the entire stack with: docker compose up --build
+
+services:
+  # --- Backend: Python FastAPI ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_data:/app/data          # Persist SQLite + ChromaDB + uploads
+      - ./backend/app:/app/app          # Hot reload in development
+    env_file:
+      - ./backend/.env
+    environment:
+      - FRONTEND_URL=http://localhost:3000
+      - HF_HOME=/app/data/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s     # sentence-transformers model download on first run
+    restart: unless-stopped
+
+  # --- Frontend: Next.js ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src         # Hot reload in development
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend_data:
+    driver: local

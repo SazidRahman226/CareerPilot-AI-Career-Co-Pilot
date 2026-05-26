@@ -1,0 +1,25 @@
+# Exclude virtual environments
+.venv/
+.pixi/
+venv/
+ENV/
+
+# Exclude local database/data directories
+backend/data/
+backend/app/__pycache__/
+backend/**/*.pyc
+
+# Exclude Node.js directories
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
+
+# Exclude git directories
+.git/
+.github/
+.gitignore

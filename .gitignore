@@ -1,0 +1,8 @@
+.venv
+./backend/__pycache__/
+./backend/app/__pycache__/
+./frontend/__pycache__/
+./frontend/app/__pycache__/
+./.env
+./**/node_modules/
+.cursorrules
