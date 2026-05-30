@@ -38,9 +38,9 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 CareerPilot Backend Starting...")
     logger.info("=" * 60)
 
-    # Initialize SQLite database (create tables)
+    # Initialize PostgreSQL database (create tables)
     init_db()
-    logger.info("✅ SQLite database initialized")
+    logger.info("✅ PostgreSQL database initialized")
 
     # Initialize ChromaDB vector store
     vector_store.initialize()
@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"📦 LLM Model: {settings.LLM_MODEL}")
     logger.info(f"🔍 Embedding Model: {settings.EMBEDDING_MODEL}")
     logger.info(f"🌐 Frontend URL: {settings.FRONTEND_URL}")
+    logger.info(f"🗄️ Database: PostgreSQL")
     logger.info("=" * 60)
     logger.info("✅ CareerPilot is ready!")
     logger.info("=" * 60)
@@ -66,7 +67,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CareerPilot API",
     description="Agentic Career Co-Pilot — RAG-powered career assistant with job search, fit scoring, and application tracking.",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -85,25 +86,29 @@ app.add_middleware(
 )
 
 # --- Register Routers ---
-from app.routers import cv, chat, jobs, tracker  # noqa: E402
+from app.routers import auth, cv, chat, jobs, tracker, cv_builder  # noqa: E402
 
+app.include_router(auth.router)
 app.include_router(cv.router)
 app.include_router(chat.router)
 app.include_router(jobs.router)
 app.include_router(tracker.router)
+app.include_router(cv_builder.router)
 
 
 # --- Health Check ---
 @app.get("/health", tags=["System"])
 async def health_check():
     """Health check endpoint for Docker and monitoring."""
-    cv_status = vector_store.get_status()
+    # Health check doesn't have user context, use 0 as placeholder
+    cv_status = vector_store.get_status(0)
     return {
         "status": "ok",
         "service": "CareerPilot Backend",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "cv_uploaded": cv_status.get("uploaded", False),
         "llm_model": settings.LLM_MODEL,
+        "database": "postgresql",
     }
 
 
@@ -112,7 +117,7 @@ async def root():
     """Root endpoint with API info."""
     return {
         "name": "CareerPilot API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "docs": "/docs",
         "health": "/health",
     }

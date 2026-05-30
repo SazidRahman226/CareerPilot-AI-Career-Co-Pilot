@@ -18,10 +18,9 @@ async def search_jobs(request: JobSearchRequest):
     """
     Search for jobs using natural language.
 
-    Queries three sources:
+    Queries two sources:
     1. SerpAPI Google Web Search (live web scraping)
     2. SerpAPI Google Jobs (structured listings)
-    3. Adzuna API (job board aggregator)
 
     Falls back to mock data if no API keys are configured.
     Results are deduplicated and enriched with fit scores from the user's CV.

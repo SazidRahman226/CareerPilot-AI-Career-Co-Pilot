@@ -3,12 +3,20 @@
  * ================================
  * Natural language job search with fit score cards.
  * Shows results from multiple sources with CV-grounded fit analysis.
+ * Tracks which jobs are already in the tracker to prevent duplicates.
  */
 
 "use client";
 
-import { useState } from "react";
-import { searchJobs, createApplication, type JobCard, type JobSearchResponse } from "@/lib/api";
+import { useState, useEffect, useCallback } from "react";
+import {
+  searchJobs,
+  createApplication,
+  getApplications,
+  type JobCard,
+  type JobSearchResponse,
+  type Application,
+} from "@/lib/api";
 
 function FitScoreCircle({ score }: { score: number }) {
   const radius = 22;
@@ -34,11 +42,28 @@ function FitScoreCircle({ score }: { score: number }) {
   );
 }
 
-function JobCardComponent({ job, onAddToTracker }: { job: JobCard; onAddToTracker: (job: JobCard) => void }) {
+/**
+ * Generates a unique key for a job based on title + company (normalized).
+ * Used to check if a job is already tracked.
+ */
+function getJobKey(title: string, company: string): string {
+  return `${title.toLowerCase().trim()}::${company.toLowerCase().trim()}`;
+}
+
+function JobCardComponent({
+  job,
+  onAddToTracker,
+  isTracked,
+}: {
+  job: JobCard;
+  onAddToTracker: (job: JobCard) => void;
+  isTracked: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [adding, setAdding] = useState(false);
 
   const handleAdd = async () => {
+    if (isTracked) return; // Already tracked, do nothing
     setAdding(true);
     try {
       await onAddToTracker(job);
@@ -112,12 +137,12 @@ function JobCardComponent({ job, onAddToTracker }: { job: JobCard; onAddToTracke
       {/* Actions */}
       <div className="job-card__actions">
         <button
-          className="btn btn--primary"
+          className={`btn ${isTracked ? "btn--tracked" : "btn--primary"}`}
           onClick={handleAdd}
-          disabled={adding}
+          disabled={adding || isTracked}
           style={{ flex: 1 }}
         >
-          {adding ? "Adding..." : "📋 Add to Tracker"}
+          {adding ? "Adding..." : isTracked ? "✅ In Tracker" : "📋 Add to Tracker"}
         </button>
         {job.url && (
           <a
@@ -139,6 +164,26 @@ export default function JobsPage() {
   const [results, setResults] = useState<JobSearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Set of job keys (title::company) already in the tracker
+  const [trackedJobs, setTrackedJobs] = useState<Set<string>>(new Set());
+
+  /**
+   * Fetch existing tracker applications on mount to know which jobs
+   * are already tracked, preventing duplicate additions.
+   */
+  const loadTrackedJobs = useCallback(async () => {
+    try {
+      const apps = await getApplications();
+      const keys = new Set(apps.map((app: Application) => getJobKey(app.role, app.company)));
+      setTrackedJobs(keys);
+    } catch {
+      // Non-critical — we just won't show "In Tracker" state
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTrackedJobs();
+  }, [loadTrackedJobs]);
 
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -150,6 +195,8 @@ export default function JobsPage() {
     try {
       const data = await searchJobs(query);
       setResults(data);
+      // Refresh tracked jobs in case user added some since last load
+      loadTrackedJobs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
     } finally {
@@ -158,6 +205,13 @@ export default function JobsPage() {
   };
 
   const handleAddToTracker = async (job: JobCard) => {
+    const jobKey = getJobKey(job.title, job.company);
+
+    // Double-check to prevent race conditions
+    if (trackedJobs.has(jobKey)) {
+      return;
+    }
+
     try {
       await createApplication({
         company: job.company,
@@ -168,8 +222,15 @@ export default function JobsPage() {
         salary: job.salary_range,
         fit_score: job.fit_score,
         deadline: job.deadline,
+        notes: job.description || "",
       });
-      alert(`✅ Added "${job.title}" at ${job.company} to your tracker!`);
+
+      // Immediately update tracked set so button changes to "In Tracker"
+      setTrackedJobs((prev) => {
+        const next = new Set(prev);
+        next.add(jobKey);
+        return next;
+      });
     } catch (err) {
       alert("Failed to add to tracker. Please try again.");
     }
@@ -239,7 +300,12 @@ export default function JobsPage() {
       ) : results?.jobs.length ? (
         <div className="jobs-grid">
           {results.jobs.map((job) => (
-            <JobCardComponent key={job.id} job={job} onAddToTracker={handleAddToTracker} />
+            <JobCardComponent
+              key={job.id}
+              job={job}
+              onAddToTracker={handleAddToTracker}
+              isTracked={trackedJobs.has(getJobKey(job.title, job.company))}
+            />
           ))}
         </div>
       ) : results ? (

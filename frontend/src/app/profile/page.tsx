@@ -9,27 +9,16 @@
 
 import { useState, useEffect, useRef } from "react";
 import { uploadCV, getCVStatus, clearCV } from "@/lib/api";
+import { useCvStatus } from "@/contexts/cv-status-context";
 
 export default function ProfilePage() {
+  const { cvStatus, refreshCvStatus } = useCvStatus();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [cvStatus, setCvStatus] = useState({
-    uploaded: false,
-    filename: "",
-    chunk_count: 0,
-    sections_detected: [] as string[],
-  });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Load CV status on mount
-  useEffect(() => {
-    getCVStatus()
-      .then(setCvStatus)
-      .catch(console.error);
-  }, []);
 
   const handleFile = async (file: File) => {
     // Validate file type
@@ -69,12 +58,8 @@ export default function ProfilePage() {
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      setCvStatus({
-        uploaded: true,
-        filename: result.filename,
-        chunk_count: result.chunk_count,
-        sections_detected: result.sections_detected,
-      });
+      // Refresh shared context — updates sidebar + all consumers instantly
+      await refreshCvStatus();
 
       setSuccess(result.message);
 
@@ -115,12 +100,8 @@ export default function ProfilePage() {
 
     try {
       await clearCV();
-      setCvStatus({
-        uploaded: false,
-        filename: "",
-        chunk_count: 0,
-        sections_detected: [],
-      });
+      // Refresh shared context — updates sidebar + all consumers instantly
+      await refreshCvStatus();
       setSuccess("CV data cleared successfully.");
     } catch (err) {
       setError("Failed to clear CV data.");

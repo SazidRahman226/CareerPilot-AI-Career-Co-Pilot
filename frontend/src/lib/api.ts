@@ -3,25 +3,60 @@
  * =========================
  * Centralized HTTP client for communicating with the FastAPI backend.
  * All API calls go through this module for consistency and error handling.
+ * Automatically attaches JWT token from localStorage to all requests.
  */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const TOKEN_KEY = "careerpilot-token";
+
 /**
- * Generic fetch wrapper with error handling.
+ * Get the stored JWT token.
+ */
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+/**
+ * Store the JWT token.
+ */
+export function setToken(token: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+/**
+ * Remove the JWT token.
+ */
+export function removeToken() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/**
+ * Generic fetch wrapper with error handling and auto-auth.
  */
 async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_URL}${endpoint}`;
+  const token = getToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> || {}),
+  };
+
+  // Attach JWT token if available
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
     ...options,
+    headers,
   });
 
   if (!response.ok) {
@@ -34,6 +69,77 @@ async function apiFetch<T>(
   return response.json();
 }
 
+/**
+ * Fetch wrapper for file uploads (FormData). Auto-attaches auth token.
+ */
+async function apiUpload<T>(
+  endpoint: string,
+  formData: FormData
+): Promise<T> {
+  const url = `${API_URL}${endpoint}`;
+  const token = getToken();
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Upload failed");
+  }
+
+  return response.json();
+}
+
+// ============================
+//  Auth API
+// ============================
+
+export interface UserInfo {
+  id: number;
+  name: string;
+  email: string;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: UserInfo;
+}
+
+export async function registerUser(
+  name: string,
+  email: string,
+  password: string
+): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ name, email, password }),
+  });
+}
+
+export async function loginUser(
+  email: string,
+  password: string
+): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function getCurrentUser(): Promise<UserInfo> {
+  return apiFetch<UserInfo>("/api/auth/me");
+}
+
 // ============================
 //  CV / Profile API
 // ============================
@@ -41,18 +147,13 @@ async function apiFetch<T>(
 export async function uploadCV(file: File) {
   const formData = new FormData();
   formData.append("file", file);
-
-  const response = await fetch(`${API_URL}/api/cv/upload`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || "CV upload failed");
-  }
-
-  return response.json();
+  return apiUpload<{
+    success: boolean;
+    message: string;
+    filename: string;
+    chunk_count: number;
+    sections_detected: string[];
+  }>("/api/cv/upload", formData);
 }
 
 export async function getCVStatus() {
@@ -84,6 +185,19 @@ export interface ChatResponse {
   };
 }
 
+export interface ChatMessageFromDB {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  sources: string[];
+  timestamp: string;
+}
+
+export interface ChatHistoryResponse {
+  messages: ChatMessageFromDB[];
+  conversation_id: string;
+}
+
 export async function sendChatMessage(
   message: string,
   conversationId: string = "default"
@@ -95,6 +209,12 @@ export async function sendChatMessage(
       conversation_id: conversationId,
     }),
   });
+}
+
+export async function getChatHistory(
+  conversationId: string = "default"
+): Promise<ChatHistoryResponse> {
+  return apiFetch<ChatHistoryResponse>(`/api/chat/history/${conversationId}`);
 }
 
 export async function clearChatHistory(conversationId: string) {
@@ -270,6 +390,94 @@ export interface DashboardStats {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   return apiFetch<DashboardStats>("/api/tracker/stats");
+}
+
+// ============================
+//  CV Builder API
+// ============================
+
+export interface CVBuilderData {
+  personal_info: {
+    full_name: string;
+    email: string;
+    phone: string;
+    location: string;
+    linkedin: string;
+    github: string;
+    website: string;
+  };
+  summary: string;
+  education: {
+    institution: string;
+    degree: string;
+    field_of_study: string;
+    start_date: string;
+    end_date: string;
+    gpa: string;
+    description: string;
+  }[];
+  experience: {
+    company: string;
+    position: string;
+    location: string;
+    start_date: string;
+    end_date: string;
+    current: boolean;
+    description: string;
+    highlights: string[];
+  }[];
+  skills: string[];
+  projects: {
+    name: string;
+    description: string;
+    technologies: string;
+    url: string;
+  }[];
+  certifications: string[];
+  awards: string[];
+  languages: string[];
+}
+
+export async function generateCVPdf(data: CVBuilderData): Promise<Blob> {
+  const url = `${API_URL}/api/cv-builder/generate-pdf`;
+  const token = getToken();
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || "PDF generation failed");
+  }
+
+  return response.blob();
+}
+
+export async function generateCVDocx(data: CVBuilderData): Promise<Blob> {
+  const url = `${API_URL}/api/cv-builder/generate-docx`;
+  const token = getToken();
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || "DOCX generation failed");
+  }
+
+  return response.blob();
 }
 
 // ============================

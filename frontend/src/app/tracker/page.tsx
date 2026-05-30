@@ -4,6 +4,7 @@
  * Drag-and-drop Kanban board with 5 columns for tracking applications.
  * Uses native HTML drag-and-drop API (no extra dependencies).
  * Persisted to SQLite via the backend API.
+ * Includes a detail modal for viewing full application info.
  */
 
 "use client";
@@ -30,10 +31,12 @@ function KanbanCard({
   app,
   onDragStart,
   onDelete,
+  onViewDetails,
 }: {
   app: Application;
   onDragStart: (e: React.DragEvent, appId: number) => void;
   onDelete: (id: number) => void;
+  onViewDetails: (app: Application) => void;
 }) {
   const scoreClass = app.fit_score >= 75 ? "high" : app.fit_score >= 50 ? "medium" : "low";
 
@@ -42,6 +45,7 @@ function KanbanCard({
       className="kanban__card"
       draggable
       onDragStart={(e) => onDragStart(e, app.id)}
+      onClick={() => onViewDetails(app)}
     >
       <div className="kanban__card-title">{app.role}</div>
       <div className="kanban__card-company">{app.company}</div>
@@ -76,6 +80,158 @@ function KanbanCard({
           </button>
         </div>
       </div>
+      {/* Subtle click hint */}
+      <div className="kanban__card-hint">Click for details →</div>
+    </div>
+  );
+}
+
+/**
+ * Detail Modal — shows full information about a tracked application.
+ */
+function DetailModal({
+  app,
+  onClose,
+  onDelete,
+}: {
+  app: Application;
+  onClose: () => void;
+  onDelete: (id: number) => void;
+}) {
+  const scoreClass = app.fit_score >= 75 ? "high" : app.fit_score >= 50 ? "medium" : "low";
+  const statusCol = COLUMNS.find((c) => c.id === app.status);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal--detail" onClick={(e) => e.stopPropagation()}>
+        {/* Close button */}
+        <button className="modal__close" onClick={onClose} title="Close">
+          ✕
+        </button>
+
+        {/* Header */}
+        <div className="detail-modal__header">
+          <div>
+            <h2 className="detail-modal__title">{app.role}</h2>
+            <div className="detail-modal__company">{app.company}</div>
+          </div>
+          {app.fit_score > 0 && (
+            <div className={`detail-modal__score detail-modal__score--${scoreClass}`}>
+              {Math.round(app.fit_score)}%
+              <span className="detail-modal__score-label">Fit Score</span>
+            </div>
+          )}
+        </div>
+
+        {/* Status badge */}
+        <div className="detail-modal__status">
+          <span className={`badge badge--${app.status === "offer" ? "success" : app.status === "rejected" ? "danger" : app.status === "interviewing" ? "warning" : "primary"}`}>
+            {statusCol?.emoji} {statusCol?.label || app.status}
+          </span>
+        </div>
+
+        {/* Info grid */}
+        <div className="detail-modal__info">
+          {app.location && (
+            <div className="detail-modal__info-item">
+              <span className="detail-modal__info-icon">📍</span>
+              <div>
+                <div className="detail-modal__info-label">Location</div>
+                <div className="detail-modal__info-value">{app.location}</div>
+              </div>
+            </div>
+          )}
+          {app.salary && (
+            <div className="detail-modal__info-item">
+              <span className="detail-modal__info-icon">💰</span>
+              <div>
+                <div className="detail-modal__info-label">Salary</div>
+                <div className="detail-modal__info-value">{app.salary}</div>
+              </div>
+            </div>
+          )}
+          {app.deadline && (
+            <div className="detail-modal__info-item">
+              <span className="detail-modal__info-icon">⏰</span>
+              <div>
+                <div className="detail-modal__info-label">Deadline</div>
+                <div className="detail-modal__info-value">{app.deadline}</div>
+              </div>
+            </div>
+          )}
+          {app.applied_date && (
+            <div className="detail-modal__info-item">
+              <span className="detail-modal__info-icon">📅</span>
+              <div>
+                <div className="detail-modal__info-label">Applied Date</div>
+                <div className="detail-modal__info-value">{app.applied_date}</div>
+              </div>
+            </div>
+          )}
+          {app.url && (
+            <div className="detail-modal__info-item">
+              <span className="detail-modal__info-icon">🔗</span>
+              <div>
+                <div className="detail-modal__info-label">Job Link</div>
+                <a
+                  href={app.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="detail-modal__info-link"
+                >
+                  View original posting →
+                </a>
+              </div>
+            </div>
+          )}
+          {app.created_at && (
+            <div className="detail-modal__info-item">
+              <span className="detail-modal__info-icon">🕒</span>
+              <div>
+                <div className="detail-modal__info-label">Added to Tracker</div>
+                <div className="detail-modal__info-value">
+                  {new Date(app.created_at).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Notes / Description */}
+        {app.notes && (
+          <div className="detail-modal__section">
+            <h4 className="detail-modal__section-title">Description / Notes</h4>
+            <p className="detail-modal__section-text">{app.notes}</p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="detail-modal__actions">
+          {app.url && (
+            <a
+              href={app.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn--primary"
+            >
+              🔗 View Job Posting
+            </a>
+          )}
+          <button
+            className="btn btn--danger"
+            onClick={() => {
+              onDelete(app.id);
+              onClose();
+            }}
+          >
+            🗑️ Remove from Tracker
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -85,6 +241,7 @@ export default function TrackerPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [draggedId, setDraggedId] = useState<number | null>(null);
+  const [selectedApp, setSelectedApp] = useState<Application | null>(null);
 
   // New application form state
   const [newApp, setNewApp] = useState({
@@ -267,6 +424,7 @@ export default function TrackerPage() {
                         app={app}
                         onDragStart={handleDragStart}
                         onDelete={handleDelete}
+                        onViewDetails={setSelectedApp}
                       />
                     ))
                   )}
@@ -275,6 +433,15 @@ export default function TrackerPage() {
             );
           })}
         </div>
+      )}
+
+      {/* Detail Modal */}
+      {selectedApp && (
+        <DetailModal
+          app={selectedApp}
+          onClose={() => setSelectedApp(null)}
+          onDelete={handleDelete}
+        />
       )}
 
       {/* Add Application Modal */}

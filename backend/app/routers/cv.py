@@ -2,15 +2,21 @@
 CareerPilot — CV Upload Router
 =================================
 Handles CV file uploads, processing, and status checking.
-Supports PDF and DOCX formats.
+Supports PDF and DOCX formats. User-scoped.
 """
 
 import os
+import json
 import logging
 from datetime import datetime
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from sqlalchemy.orm import Session
+
 from app.config import settings
+from app.database import get_db
+from app.models.db_models import User, UserProfile
 from app.services import cv_processor, vector_store
+from app.services.auth_service import get_current_user
 from app.models.schemas import CVUploadResponse, CVStatusResponse
 
 logger = logging.getLogger(__name__)
@@ -18,9 +24,13 @@ router = APIRouter(prefix="/api/cv", tags=["CV"])
 
 
 @router.post("/upload", response_model=CVUploadResponse)
-async def upload_cv(file: UploadFile = File(...)):
+async def upload_cv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Upload and process a CV (PDF or DOCX).
+    Upload and process a CV (PDF or DOCX) for the authenticated user.
 
     Pipeline:
     1. Validate file type
@@ -28,6 +38,7 @@ async def upload_cv(file: UploadFile = File(...)):
     3. Extract text (PDF/DOCX parser)
     4. Chunk into semantic sections
     5. Embed and store in ChromaDB
+    6. Update user profile in DB
 
     Returns processing results including detected sections and chunk count.
     """
@@ -43,7 +54,7 @@ async def upload_cv(file: UploadFile = File(...)):
 
     # --- Save uploaded file ---
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_filename = f"cv_{timestamp}{file_ext}"
+    safe_filename = f"cv_user{current_user.id}_{timestamp}{file_ext}"
     file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
 
     try:
@@ -65,8 +76,9 @@ async def upload_cv(file: UploadFile = File(...)):
 
     # --- Clear existing data and store new chunks ---
     try:
-        vector_store.clear()
+        vector_store.clear(current_user.id)
         vector_store.add_documents(
+            current_user.id,
             chunks=result["chunks"],
             filename=file.filename or safe_filename,
             sections=result["sections_detected"],
@@ -74,6 +86,18 @@ async def upload_cv(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Vector store operation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to store embeddings: {str(e)}")
+
+    # --- Update user profile in DB ---
+    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+    if not profile:
+        profile = UserProfile(user_id=current_user.id)
+        db.add(profile)
+
+    profile.cv_filename = file.filename or safe_filename
+    profile.cv_sections_json = json.dumps(result["sections_detected"])
+    profile.cv_chunk_count = len(result["chunks"])
+    profile.cv_uploaded_at = datetime.now()
+    db.commit()
 
     return CVUploadResponse(
         success=True,
@@ -85,19 +109,41 @@ async def upload_cv(file: UploadFile = File(...)):
 
 
 @router.get("/status", response_model=CVStatusResponse)
-async def get_cv_status():
-    """Check if a CV has been uploaded and get its metadata."""
-    status = vector_store.get_status()
+async def get_cv_status(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check if the authenticated user has a CV uploaded and get its metadata."""
+    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+
+    if not profile or not profile.cv_filename:
+        return CVStatusResponse(uploaded=False)
+
+    sections = json.loads(profile.cv_sections_json) if profile.cv_sections_json else []
+
     return CVStatusResponse(
-        uploaded=status.get("uploaded", False),
-        filename=status.get("filename", ""),
-        chunk_count=status.get("chunk_count", 0),
-        sections_detected=status.get("sections_detected", []),
+        uploaded=True,
+        filename=profile.cv_filename,
+        chunk_count=profile.cv_chunk_count,
+        sections_detected=sections,
+        upload_timestamp=profile.cv_uploaded_at.isoformat() if profile.cv_uploaded_at else "",
     )
 
 
 @router.delete("/clear")
-async def clear_cv():
-    """Clear the uploaded CV and all associated embeddings."""
-    vector_store.clear()
+async def clear_cv(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Clear the uploaded CV and all associated embeddings for the authenticated user."""
+    vector_store.clear(current_user.id)
+
+    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+    if profile:
+        profile.cv_filename = ""
+        profile.cv_sections_json = "[]"
+        profile.cv_chunk_count = 0
+        profile.cv_uploaded_at = None
+        db.commit()
+
     return {"success": True, "message": "CV data cleared successfully."}

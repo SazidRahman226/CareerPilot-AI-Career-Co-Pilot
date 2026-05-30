@@ -2,6 +2,24 @@
 # Run the entire stack with: docker compose up --build
 
 services:
+  # --- Database: PostgreSQL ---
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: careerpilot
+      POSTGRES_PASSWORD: careerpilot_secret
+      POSTGRES_DB: careerpilot
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U careerpilot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # --- Backend: Python FastAPI ---
   backend:
     build:
@@ -10,13 +28,15 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - backend_data:/app/data          # Persist SQLite + ChromaDB + uploads
+      - backend_data:/app/data          # Persist ChromaDB + uploads
       - ./backend/app:/app/app          # Hot reload in development
     env_file:
       - ./backend/.env
     environment:
-      - FRONTEND_URL=http://localhost:3000
       - HF_HOME=/app/data/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health')"]
       interval: 30s
@@ -41,5 +61,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_data:
+    driver: local
   backend_data:
     driver: local

@@ -94,7 +94,7 @@ function formatMessage(content: string): string {
 }
 
 export default function ChatPage() {
-  const { messages, isLoading, sendMessage, clearMessages } = useChat();
+  const { messages, isLoading, historyLoading, sendMessage, clearMessages, refreshChat } = useChat();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -138,11 +138,22 @@ export default function ChatPage() {
             Your career co-pilot — grounded in your CV. Ask anything about your career.
           </p>
         </div>
-        {messages.length > 0 && (
-          <button className="btn btn--ghost" onClick={clearMessages}>
-            🗑️ Clear Chat
-          </button>
-        )}
+        <div style={{ display: "flex", gap: "8px" }}>
+          {historyLoading ? (
+            <button className="btn btn--ghost" disabled>
+              ⏳ Refreshing...
+            </button>
+          ) : (
+            <button className="btn btn--ghost" onClick={refreshChat} title="Refresh chat from server">
+              🔄 Refresh
+            </button>
+          )}
+          {messages.length > 0 && (
+            <button className="btn btn--ghost" onClick={clearMessages}>
+              🗑️ Clear Chat
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Chat Container */}

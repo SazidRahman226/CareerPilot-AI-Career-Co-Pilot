@@ -23,7 +23,15 @@ python-docx==1.1.2
 
 # --- Database ---
 sqlalchemy==2.0.36
-aiosqlite==0.20.0
+psycopg2-binary==2.9.10
+
+# --- Authentication ---
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+
+# --- PDF Generation (CV Builder) ---
+reportlab==4.2.5
 
 # --- Configuration ---
 pydantic-settings==2.6.1

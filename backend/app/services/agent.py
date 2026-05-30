@@ -63,10 +63,11 @@ def retrieve_cv_context(query: str) -> str:
     Returns:
         Relevant CV sections as text, or a message if no CV is uploaded.
     """
-    if not vector_store.is_cv_uploaded():
+    user_id = _current_user_id
+    if not user_id or not vector_store.is_cv_uploaded(user_id):
         return "No CV has been uploaded yet. Please ask the user to upload their CV first."
 
-    results = vector_store.query(query, n_results=5)
+    results = vector_store.query(user_id, query, n_results=5)
 
     if not results:
         return "No relevant sections found in the CV for this query."
@@ -93,7 +94,11 @@ def compute_fit_score_tool(job_description: str) -> str:
     Returns:
         JSON string with score (0-100), breakdown, matched/missing skills, and reasons.
     """
-    cv_text = vector_store.get_full_text()
+    user_id = _current_user_id
+    if not user_id:
+        return json.dumps({"error": "No user context. Please upload a CV first."})
+
+    cv_text = vector_store.get_full_text(user_id)
 
     if not cv_text:
         return json.dumps({"error": "No CV uploaded. Please upload a CV first."})
@@ -224,40 +229,67 @@ def build_agent(conversation_id: str = "default") -> AgentExecutor:
     return executor
 
 
-async def chat(message: str, conversation_id: str = "default") -> dict:
+# Global user context for agent tools (set per request)
+_current_user_id: int = 0
+
+
+def set_current_user(user_id: int):
+    """Set the current user context for agent tools."""
+    global _current_user_id
+    _current_user_id = user_id
+
+
+async def chat(message: str, conversation_id: str = "default", user_id: int = 0) -> dict:
     """
     Process a user message through the AI agent.
 
     Args:
         message: The user's message.
         conversation_id: Session identifier.
+        user_id: The user's ID for CV context isolation.
 
     Returns:
         {response: str, conversation_id: str, sources: list}
     """
+    # Set user context for tools
+    set_current_user(user_id)
+    
     try:
         agent = build_agent(conversation_id)
         result = await asyncio.to_thread(agent.invoke, {"input": message})
 
         response_text = result.get("output", "I apologize, but I couldn't generate a response. Please try again.")
 
-        # Track which CV sections were referenced (from tool calls)
-        sources = []
-        if vector_store.is_cv_uploaded():
-            # Check if CV context was retrieved
-            relevant = vector_store.query(message, n_results=3)
-            sources = list(set(r["metadata"].get("section", "") for r in relevant if r.get("metadata")))
-
+        # Note: CV sources are already tracked within the agent's tool usage via retrieve_cv_context
+        # No need for an extra query here to avoid duplicate API calls
+        
         return {
             "response": response_text,
             "conversation_id": conversation_id,
-            "sources": sources,
+            "sources": [],  # Sources embedded in agent's response already
         }
 
     except Exception as e:
+        error_str = str(e)
         logger.error(f"Agent error: {e}", exc_info=True)
+        
+        # Provide user-friendly error messages for common cases
+        if "429" in error_str or "quota" in error_str.lower():
+            user_message = (
+                "⚠️ You've hit Google's API daily quota limit (20 free requests/day for gemini-2.5-flash).\n\n"
+                "**Options to continue:**\n"
+                "1. Wait until tomorrow for quota to reset\n"
+                "2. Upgrade to a paid Google AI plan for higher limits\n"
+                "3. Use a different API key with remaining quota\n\n"
+                "Visit https://ai.google.dev/gemini-api/docs/rate-limits for more info."
+            )
+        elif "api key" in error_str.lower() or "authentication" in error_str.lower():
+            user_message = "⚠️ There's an issue with your Google API key. Please check your configuration."
+        else:
+            user_message = f"⚠️ An error occurred: {error_str}"
+            
         return {
-            "response": f"I encountered an error processing your request. Please make sure your Google API key is configured correctly. Error: {str(e)}",
+            "response": user_message,
             "conversation_id": conversation_id,
             "sources": [],
         }

@@ -1,7 +1,7 @@
 """
 CareerPilot Backend — Database Setup
 ======================================
-SQLAlchemy async engine for SQLite. Provides session factory and Base class
+SQLAlchemy engine for PostgreSQL. Provides session factory and Base class
 for ORM models. Tables are auto-created on application startup.
 """
 
@@ -10,9 +10,8 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.config import settings
 
 
-# SQLite engine (synchronous for simplicity in hackathon)
-DATABASE_URL = f"sqlite:///{settings.SQLITE_DB_PATH}"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# PostgreSQL engine
+engine = create_engine(settings.DATABASE_URL)
 
 # Session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

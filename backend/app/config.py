@@ -1,8 +1,7 @@
 """
 CareerPilot Backend — Configuration
 ====================================
-Centralized settings loaded from environment variables / .env file.
-Uses Pydantic BaseSettings for type-safe config with defaults.
+Loads all settings from .env file. No hardcoded values.
 """
 
 from pydantic_settings import BaseSettings
@@ -11,40 +10,45 @@ import os
 
 
 class Settings(BaseSettings):
-    """Application-wide configuration."""
+    """Application-wide configuration loaded from .env file."""
 
     # --- LLM ---
     GOOGLE_API_KEY: str = ""
-    LLM_MODEL: str = "gemini-2.5-flash"
-    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    LLM_MODEL: str = ""
+    EMBEDDING_MODEL: str = ""
 
-    # --- Job Search APIs (optional) ---
-    SERPAPI_API_KEY: str = "cb564057a032b7e2faef6708646c2c29c78302a2"
-    ADZUNA_APP_ID: str = "1f695cb1"
-    ADZUNA_APP_KEY: str = "bef052271daa3e39651177d55cb664b4"
+    # --- Job Search APIs ---
+    SERPAPI_API_KEY: str = ""
 
-    # --- Paths ---
-    BASE_DIR: str = str(Path(__file__).resolve().parent.parent)
-    DATA_DIR: str = ""
-    CHROMA_PERSIST_DIR: str = ""
-    SQLITE_DB_PATH: str = ""
-    UPLOAD_DIR: str = ""
+    # --- Database ---
+    DATABASE_URL: str = ""
+
+    # --- Authentication ---
+    JWT_SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRY_HOURS: int = 168
 
     # --- CORS ---
     FRONTEND_URL: str = "http://localhost:3000"
+
+    # --- Paths ---
+    BASE_DIR: str = ""
+    DATA_DIR: str = ""
+    CHROMA_PERSIST_DIR: str = ""
+    UPLOAD_DIR: str = ""
 
     class Config:
         env_file = ".env"
         extra = "ignore"
 
     def model_post_init(self, __context):
-        """Set derived paths after initialization."""
+        """Set derived paths after initialization from .env."""
+        if not self.BASE_DIR:
+            self.BASE_DIR = str(Path(__file__).resolve().parent.parent)
         if not self.DATA_DIR:
             self.DATA_DIR = os.path.join(self.BASE_DIR, "data")
         if not self.CHROMA_PERSIST_DIR:
             self.CHROMA_PERSIST_DIR = os.path.join(self.DATA_DIR, "chroma_db")
-        if not self.SQLITE_DB_PATH:
-            self.SQLITE_DB_PATH = os.path.join(self.DATA_DIR, "careerpilot.db")
         if not self.UPLOAD_DIR:
             self.UPLOAD_DIR = os.path.join(self.DATA_DIR, "uploads")
 
@@ -52,6 +56,25 @@ class Settings(BaseSettings):
         os.makedirs(self.DATA_DIR, exist_ok=True)
         os.makedirs(self.CHROMA_PERSIST_DIR, exist_ok=True)
         os.makedirs(self.UPLOAD_DIR, exist_ok=True)
+
+        # Validate required config
+        self._validate()
+
+    def _validate(self):
+        """Validate that required config values are present."""
+        required = [
+            ("GOOGLE_API_KEY", self.GOOGLE_API_KEY),
+            ("LLM_MODEL", self.LLM_MODEL),
+            ("EMBEDDING_MODEL", self.EMBEDDING_MODEL),
+            ("DATABASE_URL", self.DATABASE_URL),
+            ("JWT_SECRET_KEY", self.JWT_SECRET_KEY),
+        ]
+        missing = [name for name, value in required if not value]
+        if missing:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}. "
+                "Copy .env.example to .env and fill in the values."
+            )
 
 
 # Singleton instance

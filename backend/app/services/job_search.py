@@ -1,10 +1,9 @@
 """
 CareerPilot — Job Search Service
 ===================================
-Triple-source job search with deduplication:
+Dual-source job search with deduplication:
 1. SerpAPI Google Web Search — scrapes live job postings from the web
 2. SerpAPI Google Jobs API — structured job listings
-3. Adzuna API — job board aggregator
 
 Falls back to mock data if no API keys are configured (for demo/hackathon).
 Each result is enriched with a programmatic fit score.
@@ -250,65 +249,6 @@ async def search_serpapi_jobs(query: str, location: str = "", limit: int = 10) -
         return []
 
 
-async def search_adzuna(query: str, location: str = "bd", limit: int = 10) -> list[dict]:
-    """
-    Search Adzuna job board API.
-    Requires ADZUNA_APP_ID and ADZUNA_APP_KEY.
-    """
-    if not settings.ADZUNA_APP_ID or not settings.ADZUNA_APP_KEY:
-        logger.info("Adzuna credentials not configured, skipping")
-        return []
-
-    try:
-        # Map common location strings to Adzuna country codes
-        country = "gb"  # Default to UK
-        loc_lower = location.lower() if location else ""
-        if "bangladesh" in loc_lower or "dhaka" in loc_lower or loc_lower == "bd":
-            country = "gb"  # Adzuna doesn't have BD, fall back to international
-        elif "us" in loc_lower or "usa" in loc_lower or "united states" in loc_lower:
-            country = "us"
-        elif "india" in loc_lower:
-            country = "in"
-
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(
-                f"https://api.adzuna.com/v1/api/jobs/{country}/search/1",
-                params={
-                    "app_id": settings.ADZUNA_APP_ID,
-                    "app_key": settings.ADZUNA_APP_KEY,
-                    "what": query,
-                    "results_per_page": limit,
-                    "content-type": "application/json",
-                }
-            )
-            response.raise_for_status()
-            data = response.json()
-
-        jobs = []
-        for result in data.get("results", [])[:limit]:
-            salary_min = result.get("salary_min", "")
-            salary_max = result.get("salary_max", "")
-            salary_range = f"${salary_min:,.0f} - ${salary_max:,.0f}" if salary_min and salary_max else ""
-
-            jobs.append({
-                "title": result.get("title", ""),
-                "company": result.get("company", {}).get("display_name", ""),
-                "location": result.get("location", {}).get("display_name", ""),
-                "salary_range": salary_range,
-                "job_type": result.get("contract_type", ""),
-                "deadline": "",
-                "description": result.get("description", "")[:500],
-                "requirements": _extract_requirements_from_desc(result.get("description", "")),
-                "url": result.get("redirect_url", ""),
-                "source": "adzuna",
-            })
-        return jobs
-
-    except Exception as e:
-        logger.warning(f"Adzuna search failed: {e}")
-        return []
-
-
 def _extract_company_from_snippet(snippet: str) -> str:
     """Try to extract a company name from a search snippet."""
     # Simple heuristic: company names often appear before " - " or " | "
@@ -347,9 +287,9 @@ def deduplicate_jobs(all_jobs: list[dict]) -> list[dict]:
     """
     Remove duplicate jobs across all sources.
     Uses fuzzy matching on title + company name.
-    Prefers structured sources (serpapi_jobs > adzuna > serpapi_web).
+    Prefers structured sources (serpapi_jobs > serpapi_web).
     """
-    source_priority = {"serpapi_jobs": 0, "adzuna": 1, "serpapi_web": 2, "mock": 3}
+    source_priority = {"serpapi_jobs": 0, "serpapi_web": 1, "mock": 2}
 
     # Sort by source priority (prefer structured data)
     sorted_jobs = sorted(all_jobs, key=lambda j: source_priority.get(j.get("source", "mock"), 99))

@@ -7,7 +7,7 @@
 
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import Sidebar from "@/components/layout/sidebar";
+import AppShell from "@/components/layout/app-shell";
 import "./globals.css";
 
 const inter = Inter({
@@ -29,13 +29,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.variable} antialiased`}>
-        <div className="app-layout">
-          <Sidebar />
-          <main className="main-content">
-            {children}
-          </main>
-        </div>
+      <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
