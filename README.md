@@ -7,7 +7,7 @@
 - **Frontend**: Next.js 14 (App Router), Tailwind CSS, TypeScript
 - **Backend**: Python FastAPI, LangChain, Google Gemini 3.0 Flash
 - **Vector DB**: ChromaDB with sentence-transformers embeddings
-- **Database**: SQLite (via SQLAlchemy)
+- **Database**: PostgreSQL 16 (via SQLAlchemy)
 - **Containerization**: Docker Compose
 
 ## ⚡ Quick Start (Docker)
@@ -58,7 +58,7 @@ npm run dev
 
 > Without job API keys, the Job Hunter uses realistic mock data for demo purposes.
 
-## 🎯 The Four Pillars
+## 🎯 The Five Pillars
 
 ### 1. 🔍 Job Hunter Agent
 - Natural language search ("Find ML internships in Dhaka")
@@ -78,10 +78,16 @@ npm run dev
 - Tool calling: job search, fit score, CV analysis
 - Handles: readiness checks, skill gaps, roadmaps, cover letters
 
-### 4. 📋 Productivity & Progress Tracker
+### 4. ✨ AI CV Builder
+- Generate professional CVs from profile data
+- Multiple template styles
+- Export to PDF
+- Powered by Google Gemini AI
+
+### 5. 📋 Productivity & Progress Tracker
 - 5-column Kanban board (Wishlist → Applied → Interviewing → Offer → Rejected)
 - Drag-and-drop with native HTML5 API
-- SQLite-backed persistence
+- PostgreSQL-backed persistence
 - Dashboard with stats, activity feed, AI nudges
 
 ## 📁 Project Structure
@@ -96,16 +102,20 @@ CodeSprint2026/
 │   └── app/
 │       ├── main.py              # FastAPI entry point
 │       ├── config.py            # Settings
-│       ├── database.py          # SQLite/SQLAlchemy
+│       ├── database.py          # PostgreSQL/SQLAlchemy
 │       ├── routers/             # API endpoints
+│       │   ├── auth.py          # Authentication (JWT)
 │       │   ├── cv.py            # CV upload
+│       │   ├── cv_builder.py    # AI CV generation
 │       │   ├── chat.py          # AI chat
 │       │   ├── jobs.py          # Job search
 │       │   └── tracker.py       # Kanban + Todos
 │       ├── services/            # Business logic
 │       │   ├── cv_processor.py  # PDF parsing + chunking
-│       │   ├── vector_store.py  # ChromaDB operations
+│       │   ├── cv_generator.py  # AI CV generation
+│       │   ├── vector_store.py   # ChromaDB operations
 │       │   ├── agent.py         # LangChain agent
+│       │   ├── auth_service.py  # JWT handling
 │       │   ├── fit_score.py     # Programmatic scoring
 │       │   └── job_search.py    # Multi-source search
 │       └── models/              # Data models
@@ -116,12 +126,15 @@ CodeSprint2026/
     └── src/
         ├── app/                 # Next.js pages
         │   ├── page.tsx         # Dashboard
+        │   ├── login/page.tsx   # Authentication
         │   ├── chat/page.tsx    # AI Assistant
+        │   ├── cv-builder/page.tsx # AI CV Builder
         │   ├── jobs/page.tsx    # Job Hunter
         │   ├── tracker/page.tsx # Kanban Board
         │   └── profile/page.tsx # CV Upload
         ├── components/          # React components
-        ├── hooks/               # Custom hooks
+        ├── contexts/             # Auth & CV state contexts
+        ├── hooks/                # Custom hooks
         └── lib/                 # Utilities
 ```
 
@@ -130,6 +143,16 @@ CodeSprint2026/
 ```bash
 # Health check
 curl http://localhost:8000/health
+
+# Register
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "secret123"}'
+
+# Login
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "secret123"}'
 
 # Upload CV
 curl -X POST http://localhost:8000/api/cv/upload -F "file=@your_cv.pdf"
@@ -145,4 +168,4 @@ curl -X POST http://localhost:8000/api/chat \
   -d '{"message": "What are my top skills?"}'
 ```
 
-## 🏆 Built for CodeSprint 2026 by Poridhi
+## 🏆 Built for CodeSprint 2026 by Team CareerPilot

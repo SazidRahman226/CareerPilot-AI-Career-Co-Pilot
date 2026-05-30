@@ -1,4 +1,4 @@
-# Environment & Secrets
+
 .env
 .env.local
 .env.*.local
@@ -7,7 +7,6 @@
 *.key
 *.crt
 
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,14 +19,12 @@ build/
 .eggs/
 *.manifest
 
-# Virtual Environments
 .venv
 venv/
 ENV/
 env/
 .pyenv
 
-# Testing & Coverage
 .pytest_cache/
 .coverage
 coverage/
@@ -35,14 +32,12 @@ htmlcov/
 .tox/
 .nyc_output/
 
-# Node.js - Frontend
 frontend/node_modules/
 frontend/.next/
 frontend/.output/
 frontend/coverage/
 frontend/.turbo/
 
-# Node.js - Backend
 backend/node_modules/
 backend/.next/
 backend/.nuxt/
@@ -50,25 +45,26 @@ backend/.output/
 backend/coverage/
 backend/.turbo/
 
-# Global Node
+
+
 node_modules/
 .npm
 .yarn/
 .pnp
 .pnp.js
 
-# Next.js
+
 .next/
 out/
 build/
 dist/
 
-# Docker
+
 .dockerignore
 .docker
 docker-compose.override.yml
 
-# Data & Persistent Storage
+
 data/
 chroma_db/
 *.db
@@ -77,12 +73,11 @@ chroma_db/
 uploads/
 huggingface/
 
-# Logs
+
 *.log
 logs/
 *.log.*
 
-# IDE
 .vscode/
 .idea/
 *.swp
@@ -91,16 +86,15 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Puku
+
 .puku
 
-# Misc
+
 *.bak
 *.tmp
 *.temp
 .cache/
 
-# Python bytecode directories
 **/__pycache__/
 **/*.pyc
 **/*.pyo
