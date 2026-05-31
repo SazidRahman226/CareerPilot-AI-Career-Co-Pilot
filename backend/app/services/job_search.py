@@ -11,7 +11,6 @@ Each result is enriched with a programmatic fit score.
 
 import hashlib
 import httpx
-import http.client
 import json
 import logging
 import uuid
@@ -166,22 +165,30 @@ MOCK_JOBS = [
 
 async def search_serpapi_web(query: str, limit: int = 10) -> list[dict]:
     """
-    Search for job postings using SerpAPI Google Search.
+    Search for job postings using Serper.dev Google Search API.
     Scrapes live web results for job-related queries.
+    
+    Serper.dev requires:
+    - POST method
+    - API key in X-API-KEY header
+    - JSON body with query
     """
-    query = query.replace(" ", "+")
     if not settings.SERPAPI_API_KEY:
-        logger.info("SerpAPI key not configured, skipping web search")
+        logger.info("Serper API key not configured, skipping web search")
         return []
 
     try:
-        conn = http.client.HTTPSConnection("google.serper.dev")
-        payload = ''
-        headers = {}
-        conn.request("GET", f"/search?q={query}&apiKey={settings.SERPAPI_API_KEY}", payload, headers)
-        res = conn.getresponse()
-        data = res.read()
-        data = json.loads(data.decode("utf-8"))
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                "https://google.serper.dev/search",
+                headers={
+                    "X-API-KEY": settings.SERPAPI_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                json={"q": f"{query} jobs", "num": limit},
+            )
+            response.raise_for_status()
+            data = response.json()
 
         jobs = []
         results_list = data.get("organic", data.get("organic_results", []))
@@ -196,56 +203,69 @@ async def search_serpapi_web(query: str, limit: int = 10) -> list[dict]:
                 "description": result.get("snippet", ""),
                 "requirements": [],
                 "url": result.get("link", ""),
-                "source": "serpapi_web",
+                "source": "serper_web",
             })
+
+        logger.info(f"Serper.dev web search returned {len(jobs)} results")
         return jobs
 
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"Serper.dev API error (HTTP {e.response.status_code}): {e.response.text[:200]}")
+        return []
     except Exception as e:
-        logger.warning(f"SerpAPI web search failed: {e}")
+        logger.warning(f"Serper.dev web search failed: {e}")
         return []
 
 
-async def search_serpapi_jobs(query: str, location: str = "", limit: int = 10) -> list[dict]:
+async def search_serper_jobs(query: str, location: str = "", limit: int = 10) -> list[dict]:
     """
-    Search using SerpAPI Google Jobs engine for structured job listings.
+    Search using Serper.dev Google Jobs endpoint for structured job listings.
     Returns properly structured job data.
     """
     if not settings.SERPAPI_API_KEY:
-        logger.info("SerpAPI key not configured, skipping jobs search")
+        logger.info("Serper API key not configured, skipping jobs search")
         return []
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            params = {
-                "engine": "google_jobs",
-                "q": query,
-                "api_key": settings.SERPAPI_API_KEY,
-            }
-            if location:
-                params["location"] = location
+        request_body = {"q": query, "num": limit}
+        if location:
+            request_body["location"] = location
 
-            response = await client.get("https://serpapi.com/search", params=params)
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                "https://google.serper.dev/job",
+                headers={
+                    "X-API-KEY": settings.SERPAPI_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                json=request_body,
+            )
             response.raise_for_status()
             data = response.json()
 
         jobs = []
-        for result in data.get("jobs_results", [])[:limit]:
+        for result in data.get("jobs", [])[:limit]:
             jobs.append({
                 "title": result.get("title", ""),
-                "company": result.get("company_name", ""),
+                "company": result.get("companyName", ""),
                 "location": result.get("location", ""),
-                "salary_range": result.get("detected_extensions", {}).get("salary", ""),
-                "job_type": result.get("detected_extensions", {}).get("schedule_type", ""),
+                "salary_range": result.get("salary", ""),
+                "job_type": result.get("source", ""),
                 "deadline": "",
-                "description": result.get("description", "")[:500],
-                "requirements": _extract_requirements_from_desc(result.get("description", "")),
-                "url": result.get("share_link", result.get("related_links", [{}])[0].get("link", "") if result.get("related_links") else ""),
-                "source": "serpapi_jobs",
+                "description": result.get("snippet", result.get("description", ""))[:500],
+                "requirements": _extract_requirements_from_desc(result.get("snippet", result.get("description", ""))),
+                "url": result.get("link", ""),
+                "source": "serper_jobs",
             })
+
+        logger.info(f"Serper.dev jobs search returned {len(jobs)} results")
         return jobs
 
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"Serper.dev jobs API error (HTTP {e.response.status_code}): {e.response.text[:200]}")
+        return []
     except Exception as e:
-        logger.warning(f"SerpAPI jobs search failed: {e}")
+        logger.warning(f"Serper.dev jobs search failed: {e}")
         return []
 
 
@@ -289,7 +309,7 @@ def deduplicate_jobs(all_jobs: list[dict]) -> list[dict]:
     Uses fuzzy matching on title + company name.
     Prefers structured sources (serpapi_jobs > serpapi_web).
     """
-    source_priority = {"serpapi_jobs": 0, "serpapi_web": 1, "mock": 2}
+    source_priority = {"serper_jobs": 0, "serper_web": 1, "mock": 2}
 
     # Sort by source priority (prefer structured data)
     sorted_jobs = sorted(all_jobs, key=lambda j: source_priority.get(j.get("source", "mock"), 99))
@@ -324,7 +344,7 @@ def _filter_by_query(jobs: list[dict], query: str) -> list[dict]:
     return [job for _, job in scored]
 
 
-async def search_jobs(query: str, location: str = "", limit: int = 10) -> dict:
+async def search_jobs(query: str, location: str = "", limit: int = 10, user_id: int = 0) -> dict:
     """
     Main job search function. Queries all three sources, deduplicates,
     enriches with fit scores, and returns structured results.
@@ -334,11 +354,17 @@ async def search_jobs(query: str, location: str = "", limit: int = 10) -> dict:
     all_jobs = []
     sources_used = []
 
-    # --- Source 1: SerpAPI Web Search ---
+    # --- Source 1: Serper.dev Job Search (structured) ---
+    job_results = await search_serper_jobs(query, location, limit)
+    if job_results:
+        all_jobs.extend(job_results)
+        sources_used.append("serper_jobs")
+
+    # --- Source 2: Serper.dev Web Search (general) ---
     web_results = await search_serpapi_web(query, limit)
     if web_results:
         all_jobs.extend(web_results)
-        sources_used.append("serpapi_web")
+        sources_used.append("serper_web")
 
     # --- Fallback: Mock Data ---
     if not all_jobs:
@@ -353,7 +379,7 @@ async def search_jobs(query: str, location: str = "", limit: int = 10) -> dict:
     unique_jobs = deduplicate_jobs(all_jobs)
 
     # --- Enrich with fit scores ---
-    cv_text = vector_store.get_full_text()
+    cv_text = vector_store.get_full_text(user_id) if user_id else ""
     enriched_jobs = []
 
     for job in unique_jobs[:limit]:

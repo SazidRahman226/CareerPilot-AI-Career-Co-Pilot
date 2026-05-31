@@ -54,10 +54,12 @@ function JobCardComponent({
   job,
   onAddToTracker,
   isTracked,
+  onViewDetails,
 }: {
   job: JobCard;
   onAddToTracker: (job: JobCard) => void;
   isTracked: boolean;
+  onViewDetails: (job: JobCard) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -71,6 +73,8 @@ function JobCardComponent({
       setAdding(false);
     }
   };
+
+  const isMockJob = job.source === "mock" || !job.url || job.url.includes("example.com");
 
   return (
     <div className="job-card">
@@ -144,7 +148,14 @@ function JobCardComponent({
         >
           {adding ? "Adding..." : isTracked ? "✅ In Tracker" : "📋 Add to Tracker"}
         </button>
-        {job.url && (
+        {isMockJob ? (
+          <button
+            className="btn btn--secondary"
+            onClick={() => onViewDetails(job)}
+          >
+            🔍 Details
+          </button>
+        ) : (
           <a
             href={job.url}
             target="_blank"
@@ -159,6 +170,111 @@ function JobCardComponent({
   );
 }
 
+/**
+ * Job Details Modal — shown when clicking "Details" on mock/demo jobs
+ * instead of navigating to a placeholder URL.
+ */
+function JobDetailsModal({
+  job,
+  onClose,
+}: {
+  job: JobCard;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}>✕</button>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22, color: "var(--text-primary)" }}>{job.title}</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 15, color: "var(--color-primary)" }}>{job.company}</p>
+          </div>
+          <FitScoreCircle score={job.fit_score} />
+        </div>
+
+        {/* Job Meta */}
+        <div className="job-card__meta" style={{ marginBottom: 16 }}>
+          {job.location && <span className="job-card__tag">📍 {job.location}</span>}
+          {job.salary_range && <span className="job-card__tag">💰 {job.salary_range}</span>}
+          {job.job_type && <span className="job-card__tag">📋 {job.job_type}</span>}
+          {job.deadline && <span className="job-card__tag">⏰ Deadline: {job.deadline}</span>}
+        </div>
+
+        {/* Description */}
+        <div style={{ marginBottom: 20 }}>
+          <h4 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Description
+          </h4>
+          <p style={{ margin: 0, lineHeight: 1.6, color: "var(--text-primary)" }}>{job.description}</p>
+        </div>
+
+        {/* Requirements */}
+        {job.requirements.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Required Skills
+            </h4>
+            <div className="job-card__skills">
+              {job.requirements.map((skill, i) => (
+                <span key={i} className="job-card__skill">{skill}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Fit Breakdown */}
+        {job.fit_breakdown && Object.keys(job.fit_breakdown).length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ margin: "0 0 12px", fontSize: 14, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Fit Score Breakdown
+            </h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+              {[
+                { label: "Skills", value: job.fit_breakdown.skill_match },
+                { label: "Experience", value: job.fit_breakdown.experience_match },
+                { label: "Education", value: job.fit_breakdown.education_match },
+              ].map((item) => (
+                <div key={item.label} style={{
+                  padding: 12,
+                  borderRadius: "var(--radius-md)",
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--color-primary)" }}>
+                    {item.value ?? 0}%
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{item.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Match Reasons */}
+        {job.match_reasons.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Why It Matches
+            </h4>
+            <ul style={{ paddingLeft: 20, margin: 0, color: "var(--text-primary)", lineHeight: 1.8 }}>
+              {job.match_reasons.map((reason, i) => (
+                <li key={i}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <p style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic", margin: "16px 0 0" }}>
+          This is a demo listing. In production, this would link to the actual job posting.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function JobsPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<JobSearchResponse | null>(null);
@@ -166,6 +282,8 @@ export default function JobsPage() {
   const [error, setError] = useState("");
   // Set of job keys (title::company) already in the tracker
   const [trackedJobs, setTrackedJobs] = useState<Set<string>>(new Set());
+  // Job selected for the details modal
+  const [selectedJob, setSelectedJob] = useState<JobCard | null>(null);
 
   /**
    * Fetch existing tracker applications on mount to know which jobs
@@ -305,6 +423,7 @@ export default function JobsPage() {
               job={job}
               onAddToTracker={handleAddToTracker}
               isTracked={trackedJobs.has(getJobKey(job.title, job.company))}
+              onViewDetails={setSelectedJob}
             />
           ))}
         </div>
@@ -325,6 +444,10 @@ export default function JobsPage() {
             We&apos;ll search across multiple sources and score each result against your CV.
           </p>
         </div>
+      )}
+      {/* Job Details Modal */}
+      {selectedJob && (
+        <JobDetailsModal job={selectedJob} onClose={() => setSelectedJob(null)} />
       )}
     </div>
   );

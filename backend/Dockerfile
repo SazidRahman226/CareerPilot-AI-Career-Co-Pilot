@@ -21,6 +21,9 @@ COPY . .
 # Create data directories
 RUN mkdir -p data/uploads data/chroma_db
 
+# Disable ChromaDB telemetry to avoid posthog errors
+ENV ANONYMIZED_TELEMETRY=false
+
 # Expose port
 EXPOSE 8000
 

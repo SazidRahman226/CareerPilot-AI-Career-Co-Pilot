@@ -29,6 +29,11 @@ _cv_metadata: dict = {}  # Track upload status per user
 _metadata_file: str = ""
 
 
+def _user_key(user_id: int) -> str:
+    """Normalize user_id to a string key for consistent dict/JSON lookup."""
+    return str(user_id)
+
+
 def _load_metadata():
     """Load CV metadata from disk if it exists."""
     global _cv_metadata, _metadata_file
@@ -127,7 +132,7 @@ def add_documents(user_id: int, chunks: list[dict], filename: str = "", sections
     )
 
     # Update tracking metadata (per user)
-    _cv_metadata[user_id] = {
+    _cv_metadata[_user_key(user_id)] = {
         "uploaded": True,
         "filename": filename,
         "chunk_count": len(chunks),
@@ -208,7 +213,7 @@ def get_full_text(user_id: int) -> str:
 
 def get_status(user_id: int) -> dict:
     """Return current upload status and metadata for a specific user."""
-    user_meta = _cv_metadata.get(user_id, {})
+    user_meta = _cv_metadata.get(_user_key(user_id), {})
     return {
         "uploaded": user_meta.get("uploaded", False),
         "filename": user_meta.get("filename", ""),
@@ -235,8 +240,9 @@ def clear(user_id: int):
         pass
     
     # Clear metadata for this user
-    if user_id in _cv_metadata:
-        del _cv_metadata[user_id]
+    key = _user_key(user_id)
+    if key in _cv_metadata:
+        del _cv_metadata[key]
         _save_metadata()
     
     logger.info(f"Vector store cleared for user {user_id}")
@@ -244,4 +250,4 @@ def clear(user_id: int):
 
 def is_cv_uploaded(user_id: int) -> bool:
     """Quick check if a CV has been uploaded for a specific user."""
-    return _cv_metadata.get(user_id, {}).get("uploaded", False)
+    return _cv_metadata.get(_user_key(user_id), {}).get("uploaded", False)

@@ -5,16 +5,21 @@ Job search endpoint that queries multiple sources and returns enriched results.
 """
 
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from app.models.schemas import JobSearchRequest, JobSearchResponse, JobCard
+from app.models.db_models import User
 from app.services import job_search
+from app.services.auth_service import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
 
 
 @router.post("/search", response_model=JobSearchResponse)
-async def search_jobs(request: JobSearchRequest):
+async def search_jobs(
+    request: JobSearchRequest,
+    current_user: User = Depends(get_current_user),
+):
     """
     Search for jobs using natural language.
 
@@ -29,6 +34,7 @@ async def search_jobs(request: JobSearchRequest):
         query=request.query,
         location=request.location,
         limit=request.limit,
+        user_id=current_user.id,
     )
 
     # Convert to response schema
@@ -57,3 +63,4 @@ async def search_jobs(request: JobSearchRequest):
         query=result["query"],
         sources_used=result["sources_used"],
     )
+

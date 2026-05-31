@@ -29,6 +29,7 @@ services:
       - "8000:8000"
     volumes:
       - backend_data:/app/data          # Persist ChromaDB + uploads
+      - model_cache:/root/.cache        # Cache ONNX embedding model
       - ./backend/app:/app/app          # Hot reload in development
     env_file:
       - ./backend/.env
@@ -42,7 +43,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s     # sentence-transformers model download on first run
+      start_period: 30s     # Model is pre-baked, fast startup
     restart: unless-stopped
 
   # --- Frontend: Next.js ---
@@ -64,4 +65,6 @@ volumes:
   postgres_data:
     driver: local
   backend_data:
+    driver: local
+  model_cache:
     driver: local
