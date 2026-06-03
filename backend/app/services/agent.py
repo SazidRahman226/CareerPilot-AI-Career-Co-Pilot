@@ -325,7 +325,10 @@ async def _direct_chat(message: str, conversation_id: str, db: Session, has_cv: 
 
     response = await asyncio.to_thread(llm_invoke_with_retry, llm, messages)
 
-    memory.save_context({"input": message}, {"output": response.content})
+    # NOTE: we do NOT call memory.save_context() here.  The chat router
+    # (routers/chat.py) persists both the user message and the AI response
+    # to the DB after this function returns.  Calling save_context() would
+    # create duplicate rows.
 
     logger.info(f"⚡ Fast path response: {len(response.content)} chars")
     return response.content

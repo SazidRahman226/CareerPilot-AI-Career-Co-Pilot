@@ -145,48 +145,17 @@ class DatabaseChatMemory(BaseChatMemory):
 
     def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, str]) -> None:
         """
-        Persist a single user/assistant exchange to the database.
+        No-op: the chat router (``routers/chat.py``) already persists both
+        the user message and the assistant response to the ``chat_messages``
+        table on every exchange.  If we also wrote here, every message would
+        be stored twice — once by the router and once by LangChain's
+        ``AgentExecutor`` which calls ``memory.save_context()`` automatically
+        at the end of each turn.
 
-        LangChain invokes this once per agent turn with:
-            inputs  = {"input": "<user text>"}
-            outputs = {"output": "<assistant text>"}
+        This method must still exist (it's part of the ``BaseChatMemory``
+        contract), but it intentionally does nothing.
         """
-        user_id, conversation_id = self._split_key()
-        user_text = (inputs.get("input") or "").strip()
-        ai_text = (outputs.get("output") or "").strip()
-
-        if not user_text or not ai_text:
-            # Nothing meaningful to persist.
-            return
-
-        try:
-            # One transaction: insert both halves of the exchange.
-            self._db.add(
-                ChatMessage(
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                    role="user",
-                    content=user_text,
-                    sources_json="[]",
-                )
-            )
-            self._db.add(
-                ChatMessage(
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                    role="assistant",
-                    content=ai_text,
-                    sources_json="[]",
-                )
-            )
-            self._db.commit()
-        except Exception as e:
-            # Roll back so the session isn't left in a bad state for the next call.
-            logger.error(f"DB write failed for chat history: {e}")
-            try:
-                self._db.rollback()
-            except Exception:
-                pass
+        return
 
     def clear(self) -> None:
         """Delete all persisted messages for this session."""
