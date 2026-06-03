@@ -29,7 +29,8 @@ services:
       - "8000:8000"
     volumes:
       - backend_data:/app/data          # Persist ChromaDB + uploads
-      - model_cache:/root/.cache        # Cache ONNX embedding model
+      - model_cache:/root/.cache        # Cache sentence-transformers / HF models
+      - chroma_onnx:/root/.cache/chroma # Cache the chromadb ONNX embedding model
       - ./backend/app:/app/app          # Hot reload in development
     env_file:
       - ./backend/.env
@@ -67,4 +68,6 @@ volumes:
   backend_data:
     driver: local
   model_cache:
+    driver: local
+  chroma_onnx:
     driver: local

@@ -25,19 +25,86 @@ import re
 from typing import Optional
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.memory import ConversationBufferWindowMemory
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import SystemMessage, HumanMessage
+from sqlalchemy.orm import Session
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+)
+from google.api_core.exceptions import ResourceExhausted
 
 from app.config import settings
 from app.services import vector_store
 from app.services import fit_score as fit_score_service
 from app.services import job_search as job_search_service
+from app.services.db_memory import DatabaseChatMemory
 import asyncio
 
 logger = logging.getLogger(__name__)
+
+
+# ============================
+#  429 Rate-Limit Retry Decorator
+# ============================
+# The Google free tier is rate-limited (5 RPM on gemini-2.5-flash, 15 RPM on
+# gemini-2.5-flash-lite). A tool-calling agent turn can fire several
+# generate_content calls back-to-back, which exhausts the per-minute window.
+#
+# `ChatGoogleGenerativeAI` accepts a `max_retries` kwarg but its built-in
+# retry uses fixed delays and doesn't back off long enough to clear a
+# per-minute window. Worse, in langchain-google-genai 2.1.4 the more
+# expressive `retry_initial_delay` / `retry_max_delay` / `retry_multiplier`
+# kwargs are *silently* moved into `model_kwargs` and have no effect
+# (the client logs a warning to that effect). So we wrap the call sites
+# with a proper tenacity decorator that:
+#   - retries only on ResourceExhausted (429) — not on other errors
+#   - backs off exponentially (5s, 10s, 20s, 40s) up to 60s
+#   - caps at 4 attempts (so worst-case wall time is ~75s, well under the
+#     FastAPI request timeout of 120s)
+#   - logs each retry so we can see when the rate limit is biting
+_retry_on_429 = retry(
+    retry=retry_if_exception_type(ResourceExhausted),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=2, min=5, max=60),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+
+
+# ============================
+#  Retry-wrapped LLM call sites
+# ============================
+# Stand-alone functions (not methods) so tenacity's decorator stack can
+# wrap them cleanly. The decorators are applied here at module-import
+# time, so the wrapped versions are what `chat()` and `_direct_chat()`
+# call. This keeps the call sites short and keeps all retry policy in
+# one place.
+
+@_retry_on_429
+def llm_invoke_with_retry(llm, messages):
+    """Invoke a ChatGoogleGenerativeAI instance, retrying on 429."""
+    return llm.invoke(messages)
+
+
+@_retry_on_429
+def agent_invoke_with_retry(agent, payload):
+    """Invoke an AgentExecutor, retrying on 429.
+
+    NOTE: the agent executor is stateful (it has a memory + cached
+    intermediate steps), so retrying it will replay the *whole* agent
+    loop from scratch. That's a feature, not a bug, here: if a single
+    generate_content call inside the loop hits a 429, the whole loop
+    gets a fresh per-minute budget on the next attempt. The cost is
+    wasted tool calls (CV re-retrieval etc.), but the CV read is cheap
+    (~1s) and the alternative is failing the user's request.
+    """
+    return agent.invoke(payload)
 
 # ============================
 #  Singleton LLM Instance
@@ -51,33 +118,57 @@ def _get_llm() -> ChatGoogleGenerativeAI:
     """Get or create a cached LLM instance (singleton)."""
     global _llm
     if _llm is None:
+        # NOTE on retry strategy: langchain-google-genai 2.1.4 silently
+        # moves `retry_initial_delay` / `retry_max_delay` / `retry_multiplier`
+        # into `model_kwargs` (and logs a warning) — they don't actually
+        # configure the client. We keep the client's `max_retries=1` as a
+        # last-ditch safety net and do the real exponential backoff in the
+        # `_retry_on_429` decorator applied to the call sites.
         _llm = ChatGoogleGenerativeAI(
             model=settings.LLM_MODEL,
             google_api_key=settings.GOOGLE_API_KEY,
             temperature=0.7,
-            timeout=60,            # 60s timeout (was 120s)
-            max_retries=2,
+            timeout=60,
+            max_retries=1,
         )
         logger.info(f"LLM singleton initialized: {settings.LLM_MODEL}")
     return _llm
 
 
 # ============================
-#  Conversation Memory Store
+#  Conversation Memory (DB-backed)
 # ============================
-# Maps conversation_id → memory instance
-_memory_store: dict[str, ConversationBufferWindowMemory] = {}
+# The previous in-memory dict has been replaced by `DatabaseChatMemory`,
+# which reads from / writes to the `chat_messages` table in PostgreSQL.
+# This survives backend restarts, is shared across replicas, and is
+# auditable from SQL. The `_get_memory` helper still exists so the rest
+# of this module's call sites don't need to change — it now requires a
+# `db` session and threads it into the memory instance.
+#
+# We still keep a tiny per-process cache of *agent executors* (line ~330)
+# because building a LangChain agent is expensive; only the conversation
+# history itself is now persisted.
+
+_MEMORY_WINDOW_K = 20
 
 
-def _get_memory(conversation_id: str) -> ConversationBufferWindowMemory:
-    """Get or create conversation memory for a session."""
-    if conversation_id not in _memory_store:
-        _memory_store[conversation_id] = ConversationBufferWindowMemory(
-            k=20,
-            memory_key="chat_history",
-            return_messages=True,
-        )
-    return _memory_store[conversation_id]
+def _get_memory(conversation_id: str, db: Session) -> DatabaseChatMemory:
+    """
+    Build a database-backed chat memory for the given session key.
+
+    Note: we create a fresh `DatabaseChatMemory` per call instead of
+    caching it. The memory object holds a live SQLAlchemy `Session`,
+    which is request-scoped in FastAPI — caching it across requests
+    would cause "this Session is closed" errors and cross-request data
+    leakage. Building it is cheap (it just wraps a Session).
+    """
+    return DatabaseChatMemory(
+        conversation_key=conversation_id,
+        db=db,
+        k=_MEMORY_WINDOW_K,
+        memory_key="chat_history",
+        return_messages=True,
+    )
 
 
 # ============================
@@ -155,34 +246,179 @@ You're having a casual conversation. Respond naturally and concisely.
 TONE: Professional yet friendly, like a senior mentor who genuinely cares."""
 
 
-async def _direct_chat(message: str, conversation_id: str) -> str:
+# Used to short-circuit CV-dependent questions on the fast path (no tool access).
+# The agent path is steered by the CV-status block in its system prompt.
+_CV_DEPENDENT_PATTERNS = (
+    r"\bmy\s+cv\b",
+    r"\bmy\s+resume\b",
+    r"\bmy\s+profile\b",
+    r"\bmy\s+skills?\b",
+    r"\bmy\s+experience\b",
+    r"\bmy\s+background\b",
+    r"\bmy\s+education\b",
+    r"\bmy\s+projects?\b",
+    r"\bbased\s+on\s+my\b",
+    r"\bwhat\s+jobs?\s+fit\s+me\b",
+    r"\bam\s+i\s+(a\s+)?(good\s+)?fit\b",
+    r"\bready\s+for\s+(this|that|the)\s+role\b",
+    r"\bevaluate\s+my\b",
+    r"\banalyze\s+my\b",
+    r"\bimprove\s+my\s+resume\b",
+    r"\breview\s+my\s+(cv|resume|profile)\b",
+)
+
+
+def _is_cv_dependent(message: str) -> bool:
+    """Return True if the message text clearly needs CV context to answer."""
+    import re as _re
+    text = message.lower()
+    for pattern in _CV_DEPENDENT_PATTERNS:
+        if _re.search(pattern, text):
+            return True
+    return False
+
+
+async def _direct_chat(message: str, conversation_id: str, db: Session, has_cv: bool = False) -> str:
     """
     Fast direct LLM call without agent/tool overhead.
     Used for greetings, thanks, simple questions, etc.
     Typically responds in 3-8 seconds.
+
+    Args:
+        message: The user's message.
+        conversation_id: Session identifier.
+        db: Active SQLAlchemy session.
+        has_cv: Authoritative CV-status flag from the DB. When the user
+            asks anything that depends on CV data and they have not
+            uploaded one, we short-circuit here with a friendly
+            explanation instead of letting the LLM hallucinate a generic
+            "please upload your CV" answer.
     """
     llm = _get_llm()
-    memory = _get_memory(conversation_id)
+    memory = _get_memory(conversation_id, db)
 
-    # Build messages with conversation history for context
-    messages = [SystemMessage(content=_DIRECT_SYSTEM_PROMPT)]
+    # Short-circuit: if the user is asking a CV-dependent question and they
+    # haven't uploaded a CV yet, return a clear actionable message instead
+    # of letting the fast-path LLM hallucinate. The fast path doesn't have
+    # tool access, so it cannot call `retrieve_cv_context`.
+    # Short-circuit CV-dependent questions on the fast path (no tool access).
+    if not has_cv and _is_cv_dependent(message):
+        return (
+            "I can't answer that without your CV — it lets me ground every "
+            "recommendation in your actual skills and experience. "
+            "**Please upload your CV via the CV Builder page first**, then "
+            "ask me again and I'll give you a personalized answer.\n\n"
+            "In the meantime I'm happy to help with general career advice, "
+            "interview prep, or skill-roadmap questions — just ask!"
+        )
+
+    # Same CV-status block the agent path uses, so both paths see the same context.
+    direct_prompt = _DIRECT_SYSTEM_PROMPT + "\n\n" + _build_cv_status_block(has_cv)
+    messages = [SystemMessage(content=direct_prompt)]
 
     history = memory.load_memory_variables({})
     chat_history = history.get("chat_history", [])
     if chat_history:
-        # Include last 6 messages for context (3 exchanges)
         messages.extend(chat_history[-6:])
 
     messages.append(HumanMessage(content=message))
 
-    # Direct LLM call — no agent, no tools, no scratchpad
-    response = await asyncio.to_thread(llm.invoke, messages)
+    response = await asyncio.to_thread(llm_invoke_with_retry, llm, messages)
 
-    # Save to memory so agent path also sees this history
     memory.save_context({"input": message}, {"output": response.content})
 
     logger.info(f"⚡ Fast path response: {len(response.content)} chars")
     return response.content
+
+
+# ============================
+#  Empty-Output Recovery
+# ============================
+# `create_tool_calling_agent` + Gemini 2.5 Flash Lite has a quirk: after a
+# tool call is executed and the result is added to the scratchpad, the
+# model's second-pass response occasionally arrives with `content=""` and
+# `tool_calls=[]`. LangChain's AgentExecutor then returns that empty
+# string as the final `output`, and the user sees a blank message.
+#
+# The agent's `intermediate_steps` list still contains the tool
+# observations though, so we can recover by feeding those observations
+# back to the LLM in a plain "summarize for the user" prompt. This is
+# a single LLM call (no tool overhead) and reliably produces a
+# non-empty answer because the LLM has full context and a clear task.
+
+_INTERMEDIATE_SYNTH_PROMPT = """You are CareerPilot AI — a career co-pilot.
+
+The user asked:
+\"\"\"{user_message}\"\"\"
+
+A retrieval-augmented tool gathered the following context. Use it to answer the user directly. If the context is empty, say you don't have enough information.
+
+Context:
+\"\"\"
+{context}
+\"\"\"
+
+Write a clear, helpful answer in Markdown. Don't mention tools, retrieval, or the prompt — just answer the user as CareerPilot would.
+"""
+
+
+async def _synthesize_from_intermediate(
+    message: str,
+    intermediate_steps: list,
+) -> Optional[str]:
+    """
+    Recover from an empty `output` from the LangChain agent by re-prompting
+    the LLM with the tool observations we did get.
+
+    Args:
+        message: The original user message.
+        intermediate_steps: The `intermediate_steps` list from the
+            AgentExecutor's result. Each entry is a tuple of
+            `(AgentAction, observation)` for tool-using turns.
+
+    Returns:
+        A non-empty assistant answer, or None if recovery failed.
+    """
+    if not intermediate_steps:
+        return None
+
+    observations: list[str] = []
+    for step in intermediate_steps:
+        # LangChain's intermediate_steps is a list of (AgentAction, str|dict) tuples.
+        if isinstance(step, tuple) and len(step) == 2:
+            action, observation = step
+            tool_name = getattr(action, "tool", "tool")
+            observations.append(f"[{tool_name}]\n{observation}")
+        else:
+            # Some LangChain versions wrap as a single object — fall back to str().
+            observations.append(str(step))
+
+    if not observations:
+        return None
+
+    context = "\n\n---\n\n".join(observations)
+    prompt_text = _INTERMEDIATE_SYNTH_PROMPT.format(
+        user_message=message,
+        context=context,
+    )
+
+    try:
+        llm = _get_llm()
+        response = await asyncio.to_thread(
+            llm_invoke_with_retry,
+            llm,
+            [HumanMessage(content=prompt_text)],
+        )
+        text = (response.content or "").strip()
+        if text:
+            logger.info(
+                f"♻️  Empty-output recovery produced {len(text)} chars "
+                f"from {len(observations)} observation(s)"
+            )
+        return text or None
+    except Exception as e:
+        logger.error(f"Empty-output recovery failed: {e}", exc_info=True)
+        return None
 
 
 # ============================
@@ -270,7 +506,7 @@ def search_jobs_tool(query: str) -> str:
         JSON string with job listings, each including title, company, location,
         salary, requirements, fit score, and match reasons.
     """
-    # Run the async search in a sync context
+
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -311,63 +547,140 @@ def search_jobs_tool(query: str) -> str:
 
 SYSTEM_PROMPT = """You are CareerPilot AI — a career co-pilot that helps users navigate their job search.
 
-YOUR TOOLS:
-1. **retrieve_cv_context**: Search the user's CV for relevant info. Use ONLY when you need specific CV details.
-2. **compute_fit_score_tool**: Compute fit score between CV and a job. Use when asked about job fit.
-3. **search_jobs_tool**: Search for job listings. Use when asked to find jobs.
+{cv_status_block}
+
+YOUR TOOLS (call them in this order when relevant):
+1. **retrieve_cv_context**: ALWAYS call this first when the user's question mentions their CV, profile, skills, experience, education, fit, or "based on my background". The CV is already uploaded for most users — trust that it exists in the vector store and call the tool to fetch it. Do NOT ask the user to upload their CV; just retrieve it.
+2. **compute_fit_score_tool**: Call after retrieving the CV if the user asks about job fit. Pass the CV-derived skills and the job requirements.
+3. **search_jobs_tool**: Call when the user asks to find jobs, get recommendations, or see openings. Use keywords extracted from the CV (skills, role titles) as the query.
 
 RULES:
-- Only call tools when the question actually requires them. Don't retrieve CV for general conversation.
-- When computing fit scores, explain the breakdown (skills, experience, education) clearly.
-- When presenting job results, format them as structured cards with key info.
+- When the question mentions "my CV", "my profile", "my skills", "what jobs fit me", "based on my background" — your first action MUST be calling `retrieve_cv_context`. Never respond with "please upload your CV" — the CV is in the vector store.
+- After retrieving CV context, summarize the key skills and experience, then call `search_jobs_tool` for job-fit questions.
+- When presenting job results, format them as a Markdown list with title, company, location, fit score, and a 1-line "why it fits" reason.
 - Be encouraging but honest about skill gaps. Suggest concrete steps to improve.
 - Use Markdown formatting for readability (headers, bold, lists, tables).
-- If no CV is uploaded and user asks about their profile, remind them to upload one.
+- Only tell the user to upload a CV if `retrieve_cv_context` explicitly returns an empty / "no CV" result. If that happens, say so and point them to the CV Builder page.
+- **CRITICAL: Your final answer to the user MUST contain a non-empty text response.** After you have called all the tools you need, write a clear, complete, helpful answer in Markdown. Never finish with an empty message.
 
 TONE: Professional yet friendly, like a senior mentor who genuinely cares about the user's success."""
+
+
+def _build_cv_status_block(has_cv: bool) -> str:
+    """
+    Build the authoritative CV-status block injected into the agent system prompt.
+
+    We pass this in as a hard fact so the LLM cannot hallucinate "please upload
+    your CV" when the user has already uploaded one. The `retrieve_cv_context`
+    tool is still the source of truth for content (the model needs to actually
+    fetch chunks), but the *existence* of a CV is decided here from the DB
+    `user_profile.cv_uploaded_at` column.
+    """
+    if has_cv:
+        return (
+            "CV STATUS (authoritative, set by the system from the database):\n"
+            "- The user HAS uploaded a CV. It is in the vector store and "
+            "available via `retrieve_cv_context`.\n"
+            "- You MUST NOT tell the user to upload their CV. Call "
+            "`retrieve_cv_context` to load it and answer their question.\n"
+            "- If `retrieve_cv_context` returns no relevant chunks, that is a "
+            "retrieval issue, not a missing-CV issue — try a different query "
+            "or answer from general career knowledge."
+        )
+    return (
+        "CV STATUS (authoritative, set by the system from the database):\n"
+        "- The user has NOT uploaded a CV yet.\n"
+        "- If they ask anything that requires CV data (their skills, fit for "
+        "a role, jobs matching their profile), tell them clearly to upload "
+        "their CV via the CV Builder page first, and offer to help in other "
+        "ways meanwhile (general career advice, interview prep, etc.).\n"
+        "- Do NOT call `retrieve_cv_context` — it will return no data."
+    )
 
 
 # ============================
 #  Cached Agent Executors
 # ============================
 # Agents are cached per conversation_id to avoid expensive recreation.
+# IMPORTANT: the cached executor still holds a *memory object*, and that
+# memory object now owns a SQLAlchemy Session. The Session is request-
+# scoped in FastAPI, so caching the executor would lock the cached
+# memory to a closed Session. We therefore invalidate (drop) the cached
+# executor whenever the bound Session changes. In practice the chat
+# router uses a fresh `db` per request and the agent rebuilds on the
+# first call of each request — this is still much cheaper than
+# rebuilding the underlying LangChain agent graph from scratch.
 _agent_cache: dict[str, AgentExecutor] = {}
 
 
-def build_agent(conversation_id: str = "default") -> AgentExecutor:
+def build_agent(
+    conversation_id: str = "default",
+    db: Optional[Session] = None,
+    has_cv: bool = False,
+) -> AgentExecutor:
     """
     Build or retrieve a cached LangChain agent with tools and memory.
 
     Args:
         conversation_id: Session identifier for conversation memory.
+        db: Active SQLAlchemy session used by the DB-backed memory.
+            Required — pass the same `db` from the FastAPI dependency.
+        has_cv: Authoritative flag (read from the DB
+            `user_profile.cv_uploaded_at` column) injected into the system
+            prompt so the LLM cannot hallucinate a "please upload your CV"
+            response when the user has already uploaded one.
 
     Returns:
         Configured AgentExecutor ready to handle messages.
     """
+    if db is None:
+        # Defensive: an agent without a DB session can't read history or
+        # persist the next turn. Refuse rather than silently break.
+        raise ValueError(
+            "build_agent requires an active SQLAlchemy `db` session "
+            "now that conversation memory is DB-backed."
+        )
+
     if conversation_id in _agent_cache:
-        return _agent_cache[conversation_id]
+        cached = _agent_cache[conversation_id]
+        # The cached memory was bound to a previous (now-closed) Session
+        # from a different request. We can reuse the agent graph itself
+        # (the LLM + tools + prompt wiring) but we MUST swap in a fresh
+        # memory object bound to *this* request's Session.
+        cached.memory = _get_memory(conversation_id, db)
+        # The cached prompt is built with the *previous* request's has_cv.
+        # If the CV status has flipped since then (user uploaded or cleared
+        # their CV), rebuild the executor with a fresh prompt so the LLM
+        # gets the correct CV-status block.
+        prev_has_cv = getattr(cached, "_has_cv", None)
+        if prev_has_cv != has_cv:
+            logger.info(
+                f"CV status changed for {conversation_id} "
+                f"({prev_has_cv} -> {has_cv}). Rebuilding agent."
+            )
+            del _agent_cache[conversation_id]
+        else:
+            return cached
 
-    # Use singleton LLM
     llm = _get_llm()
-
-    # Define tools
     tools = [retrieve_cv_context, compute_fit_score_tool, search_jobs_tool]
 
-    # Build prompt with memory placeholder
+    # CV-status block is filled in from the authoritative DB column so the
+    # LLM cannot hallucinate a "please upload your CV" response.
+    system_prompt_text = SYSTEM_PROMPT.format(
+        cv_status_block=_build_cv_status_block(has_cv)
+    )
     prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
+        ("system", system_prompt_text),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
 
-    # Create agent
     agent = create_tool_calling_agent(llm, tools, prompt)
 
-    # Get conversation memory
-    memory = _get_memory(conversation_id)
+    memory = _get_memory(conversation_id, db)
 
-    # Build executor with reduced iterations
     executor = AgentExecutor(
         agent=agent,
         tools=tools,
@@ -375,11 +688,13 @@ def build_agent(conversation_id: str = "default") -> AgentExecutor:
         verbose=True,
         handle_parsing_errors=True,
         max_iterations=3,          # Reduced from 5 — most queries need ≤2 iterations
-        return_intermediate_steps=False,
+        early_stopping_method="force",  # Don't auto-generate a final LLM call when stopping; our empty-output recovery handles that.
+        return_intermediate_steps=True,  # Required so the empty-output recovery can read tool observations
     )
 
     _agent_cache[conversation_id] = executor
-    logger.info(f"Agent cached for conversation: {conversation_id}")
+    executor._has_cv = has_cv  # type: ignore[attr-defined]
+    logger.info(f"Agent cached for conversation: {conversation_id} (has_cv={has_cv})")
     return executor
 
 
@@ -387,7 +702,35 @@ def build_agent(conversation_id: str = "default") -> AgentExecutor:
 #  Main Chat Entry Point
 # ============================
 
-async def chat(message: str, conversation_id: str = "default", user_id: int = 0) -> dict:
+
+def _user_has_cv(db: Session, user_id: int) -> bool:
+    """
+    Read the authoritative CV-uploaded flag from the DB.
+
+    We trust the `user_profile.cv_uploaded_at` column (set in the CV
+    upload/clear routers) over `vector_store.is_cv_uploaded()`. The latter
+    reads an in-process cache that can get out of sync on container restarts
+    or when the chroma volume is briefly unavailable. The DB column is the
+    single source of truth.
+    """
+    try:
+        from app.models.db_models import UserProfile
+        profile = (
+            db.query(UserProfile)
+            .filter(UserProfile.user_id == user_id)
+            .first()
+        )
+        return bool(profile and profile.cv_uploaded_at)
+    except Exception as e:
+        # Fall back to the vector-store cache if the DB is briefly unreachable.
+        logger.warning(f"Failed to read CV status from DB: {e}")
+        try:
+            return vector_store.is_cv_uploaded(user_id)
+        except Exception:
+            return False
+
+
+async def chat(message: str, conversation_id: str = "default", user_id: int = 0, db: Optional[Session] = None) -> dict:
     """
     Process a user message with smart routing:
     - Simple messages → direct LLM call (fast, ~3-8 seconds)
@@ -397,24 +740,58 @@ async def chat(message: str, conversation_id: str = "default", user_id: int = 0)
         message: The user's message.
         conversation_id: Session identifier.
         user_id: The user's ID for CV context isolation.
+        db: Active SQLAlchemy session for reading/writing chat history.
+            Required — the FastAPI route passes its own `db` dependency.
 
     Returns:
         {response: str, conversation_id: str, sources: list}
     """
-    # Set user context for tools
     set_current_user(user_id)
+
+    if db is None:
+        # Without a DB session we can't read or persist conversation
+        # history. Fail loudly rather than silently producing a stateless
+        # agent that loses context between turns.
+        raise ValueError(
+            "agent.chat() requires a SQLAlchemy `db` session — "
+            "conversation memory is now DB-backed."
+        )
+
+    # Authoritative CV status from the DB. Passed into both the fast path
+    # (so it can short-circuit) and the agent path (so its system prompt
+    # reflects reality).
+    has_cv = _user_has_cv(db, user_id)
 
     try:
         if _needs_agent(message):
-            # AGENT PATH: Full tool-calling agent for career queries
-            logger.info(f"🤖 Agent path for: '{message[:60]}...'")
-            agent = build_agent(conversation_id)
-            result = await asyncio.to_thread(agent.invoke, {"input": message})
+            # Agent path. `agent_invoke_with_retry` handles 429 back-off for
+            # the multi-call agent loop.
+            logger.info(f"🤖 Agent path for: '{message[:60]}...' (has_cv={has_cv})")
+            agent = build_agent(conversation_id, db=db, has_cv=has_cv)
+            result = await asyncio.to_thread(
+                agent_invoke_with_retry, agent, {"input": message}
+            )
             response_text = result.get("output", "I apologize, but I couldn't generate a response. Please try again.")
+
+            # Some Gemini versions occasionally return an empty `content`
+            # from the final LLM call. Recover by re-prompting the LLM with
+            # the tool observations the agent did gather.
+            intermediate = result.get("intermediate_steps") or []
+            if not response_text or not response_text.strip():
+                logger.warning(
+                    "Agent returned empty output. "
+                    f"intermediate_steps={len(intermediate)}. "
+                    "Falling back to direct synthesis from tool results."
+                )
+                synthesized = await _synthesize_from_intermediate(
+                    message=message,
+                    intermediate_steps=intermediate,
+                )
+                if synthesized:
+                    response_text = synthesized
         else:
-            # FAST PATH: Direct LLM call for simple messages
-            logger.info(f"⚡ Fast path for: '{message[:60]}...'")
-            response_text = await _direct_chat(message, conversation_id)
+            logger.info(f"⚡ Fast path for: '{message[:60]}...' (has_cv={has_cv})")
+            response_text = await _direct_chat(message, conversation_id, db, has_cv=has_cv)
 
         return {
             "response": response_text,
@@ -426,14 +803,38 @@ async def chat(message: str, conversation_id: str = "default", user_id: int = 0)
         error_str = str(e)
         logger.error(f"Agent error: {e}", exc_info=True)
 
-        # Provide user-friendly error messages for common cases
-        if "429" in error_str or "quota" in error_str.lower():
+        # Pull the current model name from settings so the quota message
+        # stays accurate if the operator switches model in the env.
+        model_name = settings.LLM_MODEL
+        if "gemini-2.5-flash-lite" in model_name:
+            rpm, rpd = 15, 1000
+        else:
+            rpm, rpd = 5, 20
+
+        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
+            # Surface Google's "retry in N seconds" hint when present.
+            retry_hint = ""
+            import re as _re
+            m = _re.search(r"Please retry in\s+([0-9.]+)\s*s", error_str)
+            if m:
+                secs = float(m.group(1))
+                if secs < 90:
+                    retry_hint = f" Try again in **{int(secs) + 1} seconds**."
+                else:
+                    retry_hint = f" Try again in **{int(secs / 60) + 1} minutes**."
+
             user_message = (
-                "⚠️ You've hit Google's API daily quota limit (20 free requests/day for gemini-2.5-flash).\n\n"
+                f"⚠️ Google Gemini API rate limit hit. "
+                f"The free tier of `{model_name}` is limited to "
+                f"**{rpm} requests/minute and {rpd} requests/day**." + retry_hint + "\n\n"
+                "**Why this happens:** a single chat turn can trigger "
+                "multiple LLM calls (CV retrieval + tool calls + final "
+                "answer), and each one counts against the limit.\n\n"
                 "**Options to continue:**\n"
-                "1. Wait until tomorrow for quota to reset\n"
-                "2. Upgrade to a paid Google AI plan for higher limits\n"
-                "3. Use a different API key with remaining quota\n\n"
+                "1. Wait ~1 minute and retry\n"
+                "2. Switch to `gemini-2.5-flash-lite` (higher free-tier limits)\n"
+                "3. Upgrade to a paid Google AI plan for higher limits\n"
+                "4. Use a different API key with remaining quota\n\n"
                 "Visit https://ai.google.dev/gemini-api/docs/rate-limits for more info."
             )
         elif "api key" in error_str.lower() or "authentication" in error_str.lower():

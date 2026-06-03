@@ -8,6 +8,7 @@ Frontend retrieves chat history from the GET endpoint.
 
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,13 @@ from app.services import agent as agent_service
 from app.services.auth_service import get_current_user
 
 logger = logging.getLogger(__name__)
+
+
+# Backend guard against the double-submit race. The frontend's `use-chat`
+# hook already debounces Send, but a slow network + impatient user can
+# still slip two requests through, producing duplicate DB rows.
+_DUPLICATE_WINDOW_SECONDS = 10
+
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 
@@ -48,29 +56,55 @@ async def chat(
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    # 1. Save user message to DB first
+    stripped_message = request.message.strip()
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=_DUPLICATE_WINDOW_SECONDS)
+    existing = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.user_id == current_user.id,
+            ChatMessage.conversation_id == request.conversation_id,
+            ChatMessage.role == "user",
+            ChatMessage.content == stripped_message,
+            ChatMessage.created_at >= cutoff,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .first()
+    )
+    if existing is not None:
+        logger.info(
+            f"Suppressing duplicate user message in conversation "
+            f"{request.conversation_id!r} (matches id={existing.id} "
+            f"from the last {_DUPLICATE_WINDOW_SECONDS}s)."
+        )
+        raise HTTPException(
+            status_code=409,
+            detail="This message was just submitted. Please wait a moment before sending it again.",
+        )
+
     user_msg = ChatMessage(
         user_id=current_user.id,
         conversation_id=request.conversation_id,
         role="user",
-        content=request.message.strip(),
+        content=stripped_message,
         sources_json="[]",
     )
     db.add(user_msg)
     db.commit()
 
     try:
-        # 2. Process through AI agent (user-scoped memory key and CV context)
+        # `db` is shared so the agent's DB-backed memory can read prior
+        # turns and persist the new exchange.
         result = await agent_service.chat(
             message=request.message,
             conversation_id=f"{current_user.id}:{request.conversation_id}",
             user_id=current_user.id,
+            db=db,
         )
 
         response_text = result["response"]
         sources = result.get("sources", [])
 
-        # 3. Save AI response to DB
         ai_msg = ChatMessage(
             user_id=current_user.id,
             conversation_id=request.conversation_id,
@@ -81,7 +115,6 @@ async def chat(
         db.add(ai_msg)
         db.commit()
 
-        # 4. Return to frontend
         return ChatResponse(
             response=response_text,
             conversation_id=request.conversation_id,
@@ -135,16 +168,18 @@ def clear_chat_history(
     db: Session = Depends(get_db),
 ):
     """Clear conversation history for the authenticated user's session."""
-    # Clear from database
+    # Conversation history now lives in the database, so a single delete
+    # is the source of truth — no separate in-memory dict to clean up.
     db.query(ChatMessage).filter(
         ChatMessage.user_id == current_user.id,
         ChatMessage.conversation_id == conversation_id,
     ).delete()
     db.commit()
 
-    # Clear from in-memory store
-    memory_key = f"{current_user.id}:{conversation_id}"
-    if memory_key in agent_service._memory_store:
-        del agent_service._memory_store[memory_key]
+    # Also drop any cached agent executor for this session so the next
+    # message builds a fresh one (and the next call won't rehydrate from
+    # a stale executor that might still have an old memory wired in).
+    if conversation_id in agent_service._agent_cache:
+        del agent_service._agent_cache[conversation_id]
 
     return {"success": True, "message": f"Chat history cleared for session: {conversation_id}"}

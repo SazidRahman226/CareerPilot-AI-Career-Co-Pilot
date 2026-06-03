@@ -15,6 +15,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
+
+RUN python -c "from chromadb.utils import embedding_functions; \
+    embedding_functions.SentenceTransformerEmbeddingFunction(\
+        model_name='all-MiniLM-L6-v2')" || true
+
 # Copy application code
 COPY . .
 

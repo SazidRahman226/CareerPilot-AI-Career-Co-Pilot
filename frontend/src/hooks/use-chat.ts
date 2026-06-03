@@ -34,6 +34,49 @@ export function useChat(conversationId: string = "default") {
   const [historyLoading, setHistoryLoading] = useState(true);
   const messageIdCounter = useRef(0);
 
+  /**
+   * Merge DB-loaded messages into existing local state, dropping duplicates
+   * by role+content. Handles two cases:
+   *   - Optimistic `msg-*` entries that were just persisted come back from
+   *     the DB as `db-*` entries, so we drop the optimistic copy.
+   *   - Pre-existing duplicate rows in the DB (from before the backend
+   *     dedupe guard) collapse to a single message in the UI.
+   */
+  const mergeHistory = useCallback((loaded: Message[]) => {
+    setMessages((prev: Message[]) => {
+      // Collapse the incoming DB list, keeping the oldest copy.
+      const seenDb = new Set<string>();
+      const uniqueLoaded: Message[] = [];
+      for (const m of loaded) {
+        const key = `${m.role}::${m.content.trim()}`;
+        if (seenDb.has(key)) continue;
+        seenDb.add(key);
+        uniqueLoaded.push(m);
+      }
+
+      const isDuplicate = (a: Message, b: Message) => {
+        if (a.role !== b.role) return false;
+        return a.content.trim() === b.content.trim();
+      };
+
+      const cleanedPrev: Message[] = prev.filter(
+        (p: Message) => !p.id.startsWith("msg-") || !uniqueLoaded.some((l: Message) => isDuplicate(p, l))
+      );
+
+      const merged: Message[] = [...cleanedPrev];
+      for (const l of uniqueLoaded) {
+        if (!cleanedPrev.some((p: Message) => isDuplicate(p, l))) {
+          merged.push(l);
+        }
+      }
+      merged.sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      return merged;
+    });
+  }, []);
+
   // Clear messages and reload chat history from backend on each mount
   useEffect(() => {
     setMessages([]);
@@ -42,14 +85,14 @@ export function useChat(conversationId: string = "default") {
     getChatHistory(conversationId)
       .then((history) => {
         if (history.messages.length > 0) {
-          const loaded: Message[] = history.messages.map((msg, i) => ({
+          const loaded: Message[] = history.messages.map((msg) => ({
             id: `db-${msg.id}`,
             role: msg.role as "user" | "assistant",
             content: msg.content,
             timestamp: msg.timestamp || new Date().toISOString(),
             sources: msg.sources || [],
           }));
-          setMessages(loaded);
+          mergeHistory(loaded);
           messageIdCounter.current = loaded.length + 1;
         }
       })
@@ -59,7 +102,7 @@ export function useChat(conversationId: string = "default") {
       .finally(() => {
         setHistoryLoading(false);
       });
-  }, [conversationId]);
+  }, [conversationId, mergeHistory]);
 
   const generateId = () => {
     messageIdCounter.current += 1;
@@ -72,7 +115,6 @@ export function useChat(conversationId: string = "default") {
 
       setError(null);
 
-      // Add user message to local state immediately (optimistic)
       const userMessage: Message = {
         id: generateId(),
         role: "user",
@@ -80,7 +122,6 @@ export function useChat(conversationId: string = "default") {
         timestamp: new Date().toISOString(),
       };
 
-      // Add placeholder for AI response
       const aiPlaceholder: Message = {
         id: generateId(),
         role: "assistant",
@@ -89,19 +130,17 @@ export function useChat(conversationId: string = "default") {
         isLoading: true,
       };
 
-      setMessages((prev) => [...prev, userMessage, aiPlaceholder]);
+      setMessages((prev: Message[]) => [...prev, userMessage, aiPlaceholder]);
       setIsLoading(true);
 
       try {
-        // Backend saves user message + AI response to DB, then returns response
         const response: ChatResponse = await sendChatMessage(
           content.trim(),
           conversationId
         );
 
-        // Replace placeholder with actual response
-        setMessages((prev) =>
-          prev.map((msg) =>
+        setMessages((prev: Message[]) =>
+          prev.map((msg: Message) =>
             msg.id === aiPlaceholder.id
               ? {
                   ...msg,
@@ -116,9 +155,8 @@ export function useChat(conversationId: string = "default") {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to send message";
 
-        // Replace placeholder with error message
-        setMessages((prev) =>
-          prev.map((msg) =>
+        setMessages((prev: Message[]) =>
+          prev.map((msg: Message) =>
             msg.id === aiPlaceholder.id
               ? {
                   ...msg,
@@ -139,7 +177,6 @@ export function useChat(conversationId: string = "default") {
   const clearMessages = useCallback(async () => {
     setMessages([]);
     setError(null);
-    // Clear from backend database
     try {
       await clearChatHistory(conversationId);
     } catch {
@@ -148,7 +185,6 @@ export function useChat(conversationId: string = "default") {
   }, [conversationId]);
 
   const refreshChat = useCallback(async () => {
-    setMessages([]);
     setHistoryLoading(true);
     setError(null);
 
@@ -162,8 +198,10 @@ export function useChat(conversationId: string = "default") {
             timestamp: msg.timestamp || new Date().toISOString(),
             sources: msg.sources || [],
           }));
-          setMessages(loaded);
+          mergeHistory(loaded);
           messageIdCounter.current = loaded.length + 1;
+        } else {
+          setMessages([]);
         }
       })
       .catch((err) => {
@@ -172,7 +210,7 @@ export function useChat(conversationId: string = "default") {
       .finally(() => {
         setHistoryLoading(false);
       });
-  }, [conversationId]);
+  }, [conversationId, mergeHistory]);
 
   return {
     messages,

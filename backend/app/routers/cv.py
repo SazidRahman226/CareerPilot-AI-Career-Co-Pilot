@@ -19,6 +19,28 @@ from app.services import cv_processor, vector_store
 from app.services.auth_service import get_current_user
 from app.models.schemas import CVUploadResponse, CVStatusResponse
 
+
+def _invalidate_agent_cache_for_user(user_id: int) -> None:
+    """
+    Drop any cached agent executors belonging to this user so the next chat
+    turn rebuilds the agent with the new CV-status flag.
+
+    The conversation_id format used by the chat router is `f"{user_id}:{cid}"`,
+    so we match by the user-id prefix.
+    """
+    try:
+        from app.services import agent as agent_service
+        prefix = f"{user_id}:"
+        stale = [k for k in agent_service._agent_cache if k.startswith(prefix)]
+        for k in stale:
+            del agent_service._agent_cache[k]
+        if stale:
+            logger.info(f"Invalidated {len(stale)} cached agent(s) for user {user_id}")
+    except Exception as e:
+        # Cache invalidation is best-effort. Worst case the next chat turn
+        # rebuilds the agent on its own when the prompt needs to change.
+        logger.warning(f"Failed to invalidate agent cache for user {user_id}: {e}")
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/cv", tags=["CV"])
 
@@ -99,6 +121,8 @@ async def upload_cv(
     profile.cv_uploaded_at = datetime.now()
     db.commit()
 
+    _invalidate_agent_cache_for_user(current_user.id)
+
     return CVUploadResponse(
         success=True,
         message=f"CV processed successfully! Found {len(result['chunks'])} content chunks across {len(result['sections_detected'])} sections.",
@@ -145,5 +169,7 @@ async def clear_cv(
         profile.cv_chunk_count = 0
         profile.cv_uploaded_at = None
         db.commit()
+
+    _invalidate_agent_cache_for_user(current_user.id)
 
     return {"success": True, "message": "CV data cleared successfully."}
