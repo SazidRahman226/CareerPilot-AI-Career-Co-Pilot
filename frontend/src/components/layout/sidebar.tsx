@@ -1,7 +1,7 @@
 /**
  * CareerPilot — Sidebar Navigation
  * ====================================
- * Premium sidebar with glassmorphism, gradient highlights, CV status,
+ * Professional sidebar with clean design, SVG icons, CV status,
  * user info, and logout. Persistent across all pages via the root layout.
  * Uses shared CvStatusContext for real-time CV status updates.
  */
@@ -13,15 +13,27 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useCvStatus } from "@/contexts/cv-status-context";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  LayoutDashboard,
+  MessageSquare,
+  Search,
+  Kanban,
+  FileText,
+  User,
+  Compass,
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+} from "lucide-react";
 
-// Navigation items with icons (using Unicode for zero-dependency icons)
+// Navigation items with Lucide icons
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: "📊", description: "Overview & stats" },
-  { href: "/chat", label: "AI Assistant", icon: "🤖", description: "Chat with your co-pilot" },
-  { href: "/jobs", label: "Job Hunter", icon: "🔍", description: "Find matching jobs" },
-  { href: "/tracker", label: "Tracker", icon: "📋", description: "Application Kanban" },
-  { href: "/cv-builder", label: "CV Builder", icon: "📝", description: "Build & export CV" },
-  { href: "/profile", label: "Profile", icon: "👤", description: "CV & settings" },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, description: "Overview & stats" },
+  { href: "/chat", label: "AI Assistant", icon: MessageSquare, description: "Chat with your co-pilot" },
+  { href: "/jobs", label: "Job Hunter", icon: Search, description: "Find matching jobs" },
+  { href: "/tracker", label: "Tracker", icon: Kanban, description: "Application Kanban" },
+  { href: "/cv-builder", label: "CV Builder", icon: FileText, description: "Build & export CV" },
+  { href: "/profile", label: "Profile", icon: User, description: "CV & settings" },
 ];
 
 export default function Sidebar() {
@@ -37,7 +49,9 @@ export default function Sidebar() {
       {/* --- Logo & Brand --- */}
       <div className="sidebar__brand">
         <div className="sidebar__logo">
-          <span className="sidebar__logo-icon">🚀</span>
+          <span className="sidebar__logo-icon">
+            <Compass size={20} />
+          </span>
           {!collapsed && (
             <div className="sidebar__logo-text">
               <h1>CareerPilot</h1>
@@ -50,7 +64,7 @@ export default function Sidebar() {
           onClick={() => setCollapsed(!collapsed)}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? "→" : "←"}
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
       </div>
 
@@ -58,6 +72,7 @@ export default function Sidebar() {
       <nav className="sidebar__nav">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
+          const Icon = item.icon;
           return (
             <Link
               key={item.href}
@@ -65,7 +80,9 @@ export default function Sidebar() {
               className={`sidebar__link ${isActive ? "sidebar__link--active" : ""}`}
               title={collapsed ? item.label : undefined}
             >
-              <span className="sidebar__link-icon">{item.icon}</span>
+              <span className="sidebar__link-icon">
+                <Icon size={18} />
+              </span>
               {!collapsed && (
                 <div className="sidebar__link-text">
                   <span className="sidebar__link-label">{item.label}</span>
@@ -96,7 +113,7 @@ export default function Sidebar() {
                 onClick={logout}
                 title="Sign out"
               >
-                ↗
+                <LogOut size={14} />
               </button>
             </div>
           )}

@@ -9,6 +9,23 @@
 
 import { useState } from "react";
 import { generateCVPdf, generateCVDocx, type CVBuilderData } from "@/lib/api";
+import {
+  User,
+  Edit3,
+  Briefcase,
+  GraduationCap,
+  Wrench,
+  Rocket,
+  Award,
+  Trophy,
+  Globe,
+  FileDown,
+  FileText,
+  Loader2,
+  ClipboardList,
+  AlertTriangle,
+  CheckCircle,
+} from "lucide-react";
 
 // ============================
 //  Default empty state
@@ -215,24 +232,24 @@ export default function CVBuilderPage() {
             onClick={() => handleGenerate("pdf")}
             disabled={generating !== null}
           >
-            {generating === "pdf" ? "⏳ Generating..." : "📄 Download PDF"}
+            {generating === "pdf" ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Generating...</> : <><FileDown size={14} /> Download PDF</>}
           </button>
           <button
             className="btn btn--secondary"
             onClick={() => handleGenerate("docx")}
             disabled={generating !== null}
           >
-            {generating === "docx" ? "⏳ Generating..." : "📝 Download DOCX"}
+            {generating === "docx" ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Generating...</> : <><FileText size={14} /> Download DOCX</>}
           </button>
         </div>
       </div>
 
       {/* Status Messages */}
       {error && (
-        <div className="cv-builder-alert cv-builder-alert--error">⚠️ {error}</div>
+        <div className="cv-builder-alert cv-builder-alert--error"><AlertTriangle size={14} /> {error}</div>
       )}
       {success && (
-        <div className="cv-builder-alert cv-builder-alert--success">✅ {success}</div>
+        <div className="cv-builder-alert cv-builder-alert--success"><CheckCircle size={14} /> {success}</div>
       )}
 
       <div className="cv-builder-grid">
@@ -241,7 +258,7 @@ export default function CVBuilderPage() {
 
           {/* Personal Info */}
           <div className="cv-section-card">
-            <h3 className="cv-section-card__title">👤 Personal Information</h3>
+            <h3 className="cv-section-card__title"><User size={16} /> Personal Information</h3>
             <div className="cv-field-grid">
               <div className="cv-field cv-field--full">
                 <label>Full Name</label>
@@ -276,7 +293,7 @@ export default function CVBuilderPage() {
 
           {/* Summary */}
           <div className="cv-section-card">
-            <h3 className="cv-section-card__title">📝 Professional Summary</h3>
+            <h3 className="cv-section-card__title"><Edit3 size={16} /> Professional Summary</h3>
             <textarea
               className="cv-textarea"
               value={data.summary}
@@ -289,7 +306,7 @@ export default function CVBuilderPage() {
           {/* Experience */}
           <div className="cv-section-card">
             <div className="cv-section-card__header">
-              <h3 className="cv-section-card__title">💼 Work Experience</h3>
+              <h3 className="cv-section-card__title"><Briefcase size={16} /> Work Experience</h3>
               <button className="cv-add-btn" onClick={addExperience}>+ Add</button>
             </div>
             {data.experience.map((exp, i) => (
@@ -355,7 +372,7 @@ export default function CVBuilderPage() {
           {/* Education */}
           <div className="cv-section-card">
             <div className="cv-section-card__header">
-              <h3 className="cv-section-card__title">🎓 Education</h3>
+              <h3 className="cv-section-card__title"><GraduationCap size={16} /> Education</h3>
               <button className="cv-add-btn" onClick={addEducation}>+ Add</button>
             </div>
             {data.education.map((edu, i) => (
@@ -402,7 +419,7 @@ export default function CVBuilderPage() {
 
           {/* Skills */}
           <div className="cv-section-card">
-            <h3 className="cv-section-card__title">🛠️ Skills</h3>
+            <h3 className="cv-section-card__title"><Wrench size={16} /> Skills</h3>
             <div className="cv-tags">
               {data.skills.map((skill, i) => (
                 <span key={i} className="cv-tag">
@@ -431,7 +448,7 @@ export default function CVBuilderPage() {
           {/* Projects */}
           <div className="cv-section-card">
             <div className="cv-section-card__header">
-              <h3 className="cv-section-card__title">🚀 Projects</h3>
+              <h3 className="cv-section-card__title"><Rocket size={16} /> Projects</h3>
               <button className="cv-add-btn" onClick={addProject}>+ Add</button>
             </div>
             {data.projects.map((proj, i) => (
@@ -468,7 +485,7 @@ export default function CVBuilderPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
             {/* Certifications */}
             <div className="cv-section-card">
-              <h3 className="cv-section-card__title">📜 Certifications</h3>
+              <h3 className="cv-section-card__title"><Award size={16} /> Certifications</h3>
               <div className="cv-tags cv-tags--col">
                 {data.certifications.map((cert, i) => (
                   <span key={i} className="cv-tag">
@@ -495,7 +512,7 @@ export default function CVBuilderPage() {
 
             {/* Awards */}
             <div className="cv-section-card">
-              <h3 className="cv-section-card__title">🏆 Awards</h3>
+              <h3 className="cv-section-card__title"><Trophy size={16} /> Awards</h3>
               <div className="cv-tags cv-tags--col">
                 {data.awards.map((award, i) => (
                   <span key={i} className="cv-tag">
@@ -522,7 +539,7 @@ export default function CVBuilderPage() {
 
             {/* Languages */}
             <div className="cv-section-card">
-              <h3 className="cv-section-card__title">🌐 Languages</h3>
+              <h3 className="cv-section-card__title"><Globe size={16} /> Languages</h3>
               <div className="cv-tags cv-tags--col">
                 {data.languages.map((lang, i) => (
                   <span key={i} className="cv-tag">
@@ -552,7 +569,7 @@ export default function CVBuilderPage() {
         {/* ===== RIGHT: Preview ===== */}
         <div className="cv-preview-panel">
           <div className="cv-preview-panel__header">
-            <h3>📋 Live Preview</h3>
+            <h3><ClipboardList size={14} /> Live Preview</h3>
           </div>
           <div className="cv-preview">
             {/* Name */}

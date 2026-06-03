@@ -17,14 +17,30 @@ import {
   deleteApplication,
   type Application,
 } from "@/lib/api";
+import {
+  Star,
+  Send,
+  Mic,
+  PartyPopper,
+  XCircle,
+  Trash2,
+  MapPin,
+  Calendar,
+  DollarSign,
+  Clock,
+  ExternalLink,
+  Link2,
+  Plus,
+  X,
+} from "lucide-react";
 
-// Kanban column definitions
+// Kanban column definitions with Lucide icons
 const COLUMNS = [
-  { id: "wishlist", label: "Wishlist", emoji: "⭐", color: "var(--color-info)" },
-  { id: "applied", label: "Applied", emoji: "📨", color: "var(--color-primary)" },
-  { id: "interviewing", label: "Interviewing", emoji: "🎙️", color: "var(--color-warning)" },
-  { id: "offer", label: "Offer", emoji: "🎉", color: "var(--color-success)" },
-  { id: "rejected", label: "Rejected", emoji: "❌", color: "var(--color-danger)" },
+  { id: "wishlist", label: "Wishlist", icon: Star, color: "var(--color-info)" },
+  { id: "applied", label: "Applied", icon: Send, color: "var(--color-primary)" },
+  { id: "interviewing", label: "Interviewing", icon: Mic, color: "var(--color-warning)" },
+  { id: "offer", label: "Offer", icon: PartyPopper, color: "var(--color-success)" },
+  { id: "rejected", label: "Rejected", icon: XCircle, color: "var(--color-danger)" },
 ];
 
 function KanbanCard({
@@ -50,9 +66,9 @@ function KanbanCard({
       <div className="kanban__card-title">{app.role}</div>
       <div className="kanban__card-company">{app.company}</div>
       <div className="kanban__card-meta">
-        <span>
-          {app.location && `📍 ${app.location}`}
-          {!app.location && app.applied_date && `📅 ${app.applied_date}`}
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {app.location && <><MapPin size={10} /> {app.location}</>}
+          {!app.location && app.applied_date && <><Calendar size={10} /> {app.applied_date}</>}
           {!app.location && !app.applied_date && "No details"}
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -73,10 +89,12 @@ function KanbanCard({
               cursor: "pointer",
               fontSize: 12,
               padding: 2,
+              display: "flex",
+              alignItems: "center",
             }}
             title="Delete application"
           >
-            🗑️
+            <Trash2 size={12} />
           </button>
         </div>
       </div>
@@ -106,7 +124,7 @@ function DetailModal({
       <div className="modal modal--detail" onClick={(e) => e.stopPropagation()}>
         {/* Close button */}
         <button className="modal__close" onClick={onClose} title="Close">
-          ✕
+          <X size={14} />
         </button>
 
         {/* Header */}
@@ -126,7 +144,8 @@ function DetailModal({
         {/* Status badge */}
         <div className="detail-modal__status">
           <span className={`badge badge--${app.status === "offer" ? "success" : app.status === "rejected" ? "danger" : app.status === "interviewing" ? "warning" : "primary"}`}>
-            {statusCol?.emoji} {statusCol?.label || app.status}
+            {statusCol && (() => { const Icon = statusCol.icon; return <Icon size={11} />; })()}{" "}
+            {statusCol?.label || app.status}
           </span>
         </div>
 
@@ -134,7 +153,7 @@ function DetailModal({
         <div className="detail-modal__info">
           {app.location && (
             <div className="detail-modal__info-item">
-              <span className="detail-modal__info-icon">📍</span>
+              <span className="detail-modal__info-icon"><MapPin size={14} /></span>
               <div>
                 <div className="detail-modal__info-label">Location</div>
                 <div className="detail-modal__info-value">{app.location}</div>
@@ -143,7 +162,7 @@ function DetailModal({
           )}
           {app.salary && (
             <div className="detail-modal__info-item">
-              <span className="detail-modal__info-icon">💰</span>
+              <span className="detail-modal__info-icon"><DollarSign size={14} /></span>
               <div>
                 <div className="detail-modal__info-label">Salary</div>
                 <div className="detail-modal__info-value">{app.salary}</div>
@@ -152,7 +171,7 @@ function DetailModal({
           )}
           {app.deadline && (
             <div className="detail-modal__info-item">
-              <span className="detail-modal__info-icon">⏰</span>
+              <span className="detail-modal__info-icon"><Clock size={14} /></span>
               <div>
                 <div className="detail-modal__info-label">Deadline</div>
                 <div className="detail-modal__info-value">{app.deadline}</div>
@@ -161,7 +180,7 @@ function DetailModal({
           )}
           {app.applied_date && (
             <div className="detail-modal__info-item">
-              <span className="detail-modal__info-icon">📅</span>
+              <span className="detail-modal__info-icon"><Calendar size={14} /></span>
               <div>
                 <div className="detail-modal__info-label">Applied Date</div>
                 <div className="detail-modal__info-value">{app.applied_date}</div>
@@ -170,7 +189,7 @@ function DetailModal({
           )}
           {app.url && (
             <div className="detail-modal__info-item">
-              <span className="detail-modal__info-icon">🔗</span>
+              <span className="detail-modal__info-icon"><Link2 size={14} /></span>
               <div>
                 <div className="detail-modal__info-label">Job Link</div>
                 <a
@@ -186,7 +205,7 @@ function DetailModal({
           )}
           {app.created_at && (
             <div className="detail-modal__info-item">
-              <span className="detail-modal__info-icon">🕒</span>
+              <span className="detail-modal__info-icon"><Clock size={14} /></span>
               <div>
                 <div className="detail-modal__info-label">Added to Tracker</div>
                 <div className="detail-modal__info-value">
@@ -218,7 +237,7 @@ function DetailModal({
               rel="noopener noreferrer"
               className="btn btn--primary"
             >
-              🔗 View Job Posting
+              <ExternalLink size={14} /> View Job Posting
             </a>
           )}
           <button
@@ -228,7 +247,7 @@ function DetailModal({
               onClose();
             }}
           >
-            🗑️ Remove from Tracker
+            <Trash2 size={14} /> Remove from Tracker
           </button>
         </div>
       </div>
@@ -368,29 +387,33 @@ export default function TrackerPage() {
           </p>
         </div>
         <button className="btn btn--primary" onClick={() => setShowModal(true)}>
-          ➕ Add Application
+          <Plus size={14} /> Add Application
         </button>
       </div>
 
       {/* Kanban Board */}
       {loading ? (
         <div className="kanban">
-          {COLUMNS.map((col) => (
-            <div key={col.id} className="kanban__column">
-              <div className="kanban__column-header">
-                <span className="kanban__column-title">{col.emoji} {col.label}</span>
+          {COLUMNS.map((col) => {
+            const Icon = col.icon;
+            return (
+              <div key={col.id} className="kanban__column">
+                <div className="kanban__column-header">
+                  <span className="kanban__column-title"><Icon size={14} /> {col.label}</span>
+                </div>
+                <div className="kanban__column-cards">
+                  <div className="skeleton" style={{ height: 80, marginBottom: 8 }} />
+                  <div className="skeleton" style={{ height: 80 }} />
+                </div>
               </div>
-              <div className="kanban__column-cards">
-                <div className="skeleton" style={{ height: 80, marginBottom: 8 }} />
-                <div className="skeleton" style={{ height: 80 }} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="kanban">
           {COLUMNS.map((col) => {
             const colApps = getColumnApps(col.id);
+            const Icon = col.icon;
             return (
               <div
                 key={col.id}
@@ -401,7 +424,7 @@ export default function TrackerPage() {
               >
                 <div className="kanban__column-header">
                   <span className="kanban__column-title">
-                    {col.emoji} {col.label}
+                    <Icon size={14} /> {col.label}
                   </span>
                   <span className="kanban__column-count">{colApps.length}</span>
                 </div>
@@ -479,7 +502,7 @@ export default function TrackerPage() {
                 >
                   {COLUMNS.map((col) => (
                     <option key={col.id} value={col.id}>
-                      {col.emoji} {col.label}
+                      {col.label}
                     </option>
                   ))}
                 </select>

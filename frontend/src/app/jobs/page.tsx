@@ -17,6 +17,23 @@ import {
   type JobSearchResponse,
   type Application,
 } from "@/lib/api";
+import {
+  MapPin,
+  DollarSign,
+  Briefcase,
+  Clock,
+  ListPlus,
+  ExternalLink,
+  Eye,
+  Search,
+  Loader2,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  Target,
+  X,
+} from "lucide-react";
 
 function FitScoreCircle({ score }: { score: number }) {
   const radius = 22;
@@ -88,10 +105,10 @@ function JobCardComponent({
 
       {/* Meta tags */}
       <div className="job-card__meta">
-        {job.location && <span className="job-card__tag">📍 {job.location}</span>}
-        {job.salary_range && <span className="job-card__tag">💰 {job.salary_range}</span>}
-        {job.job_type && <span className="job-card__tag">📋 {job.job_type}</span>}
-        {job.deadline && <span className="job-card__tag">⏰ {job.deadline}</span>}
+        {job.location && <span className="job-card__tag"><MapPin size={11} /> {job.location}</span>}
+        {job.salary_range && <span className="job-card__tag"><DollarSign size={11} /> {job.salary_range}</span>}
+        {job.job_type && <span className="job-card__tag"><Briefcase size={11} /> {job.job_type}</span>}
+        {job.deadline && <span className="job-card__tag"><Clock size={11} /> {job.deadline}</span>}
         <span className="job-card__tag" style={{ textTransform: "uppercase", fontSize: 9 }}>
           via {job.source}
         </span>
@@ -117,7 +134,7 @@ function JobCardComponent({
             onClick={() => setExpanded(!expanded)}
             style={{ fontSize: 12, padding: "4px 8px", marginBottom: 8 }}
           >
-            {expanded ? "▼" : "▶"} Why it matches
+            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Why it matches
           </button>
           {expanded && (
             <div className="job-card__reasons">
@@ -146,14 +163,20 @@ function JobCardComponent({
           disabled={adding || isTracked}
           style={{ flex: 1 }}
         >
-          {adding ? "Adding..." : isTracked ? "✅ In Tracker" : "📋 Add to Tracker"}
+          {adding ? (
+            <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Adding...</>
+          ) : isTracked ? (
+            <><CheckCircle size={14} /> In Tracker</>
+          ) : (
+            <><ListPlus size={14} /> Add to Tracker</>
+          )}
         </button>
         {isMockJob ? (
           <button
             className="btn btn--secondary"
             onClick={() => onViewDetails(job)}
           >
-            🔍 Details
+            <Eye size={14} /> Details
           </button>
         ) : (
           <a
@@ -162,7 +185,7 @@ function JobCardComponent({
             rel="noopener noreferrer"
             className="btn btn--secondary"
           >
-            🔗 View
+            <ExternalLink size={14} /> View
           </a>
         )}
       </div>
@@ -184,11 +207,11 @@ function JobDetailsModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}>✕</button>
+        <button className="modal-close" onClick={onClose}><X size={16} /></button>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 22, color: "var(--text-primary)" }}>{job.title}</h2>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{job.title}</h2>
             <p style={{ margin: "4px 0 0", fontSize: 15, color: "var(--color-primary)" }}>{job.company}</p>
           </div>
           <FitScoreCircle score={job.fit_score} />
@@ -196,24 +219,24 @@ function JobDetailsModal({
 
         {/* Job Meta */}
         <div className="job-card__meta" style={{ marginBottom: 16 }}>
-          {job.location && <span className="job-card__tag">📍 {job.location}</span>}
-          {job.salary_range && <span className="job-card__tag">💰 {job.salary_range}</span>}
-          {job.job_type && <span className="job-card__tag">📋 {job.job_type}</span>}
-          {job.deadline && <span className="job-card__tag">⏰ Deadline: {job.deadline}</span>}
+          {job.location && <span className="job-card__tag"><MapPin size={11} /> {job.location}</span>}
+          {job.salary_range && <span className="job-card__tag"><DollarSign size={11} /> {job.salary_range}</span>}
+          {job.job_type && <span className="job-card__tag"><Briefcase size={11} /> {job.job_type}</span>}
+          {job.deadline && <span className="job-card__tag"><Clock size={11} /> Deadline: {job.deadline}</span>}
         </div>
 
         {/* Description */}
         <div style={{ marginBottom: 20 }}>
-          <h4 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <h4 style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
             Description
           </h4>
-          <p style={{ margin: 0, lineHeight: 1.6, color: "var(--text-primary)" }}>{job.description}</p>
+          <p style={{ margin: 0, lineHeight: 1.6, color: "var(--text-primary)", fontSize: 14 }}>{job.description}</p>
         </div>
 
         {/* Requirements */}
         {job.requirements.length > 0 && (
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
               Required Skills
             </h4>
             <div className="job-card__skills">
@@ -227,7 +250,7 @@ function JobDetailsModal({
         {/* Fit Breakdown */}
         {job.fit_breakdown && Object.keys(job.fit_breakdown).length > 0 && (
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ margin: "0 0 12px", fontSize: 14, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <h4 style={{ margin: "0 0 12px", fontSize: 13, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
               Fit Score Breakdown
             </h4>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
@@ -239,11 +262,11 @@ function JobDetailsModal({
                 <div key={item.label} style={{
                   padding: 12,
                   borderRadius: "var(--radius-md)",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-subtle)",
                   textAlign: "center",
                 }}>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--color-primary)" }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "var(--color-primary)" }}>
                     {item.value ?? 0}%
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{item.label}</div>
@@ -256,10 +279,10 @@ function JobDetailsModal({
         {/* Match Reasons */}
         {job.match_reasons.length > 0 && (
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>
               Why It Matches
             </h4>
-            <ul style={{ paddingLeft: 20, margin: 0, color: "var(--text-primary)", lineHeight: 1.8 }}>
+            <ul style={{ paddingLeft: 20, margin: 0, color: "var(--text-primary)", lineHeight: 1.8, fontSize: 14 }}>
               {job.match_reasons.map((reason, i) => (
                 <li key={i}>{reason}</li>
               ))}
@@ -378,14 +401,18 @@ export default function JobsPage() {
           className="btn btn--primary"
           disabled={loading || !query.trim()}
         >
-          {loading ? "⏳ Searching..." : "🔍 Search"}
+          {loading ? (
+            <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Searching...</>
+          ) : (
+            <><Search size={14} /> Search</>
+          )}
         </button>
       </form>
 
       {/* Error */}
       {error && (
-        <div style={{ padding: 16, background: "rgba(239, 68, 68, 0.1)", borderRadius: "var(--radius-md)", color: "var(--color-danger)", marginBottom: 16 }}>
-          ⚠️ {error}
+        <div style={{ padding: 14, background: "rgba(220, 38, 38, 0.05)", borderRadius: "var(--radius-md)", color: "var(--color-danger)", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 8, border: "1px solid rgba(220, 38, 38, 0.12)" }}>
+          <AlertTriangle size={14} /> {error}
         </div>
       )}
 
@@ -429,7 +456,7 @@ export default function JobsPage() {
         </div>
       ) : results ? (
         <div className="empty-state">
-          <div className="empty-state__icon">🔍</div>
+          <div className="empty-state__icon"><Search size={40} /></div>
           <h3 className="empty-state__title">No jobs found</h3>
           <p className="empty-state__text">
             Try a different search query or broaden your criteria.
@@ -437,7 +464,7 @@ export default function JobsPage() {
         </div>
       ) : (
         <div className="empty-state">
-          <div className="empty-state__icon">🎯</div>
+          <div className="empty-state__icon"><Target size={40} /></div>
           <h3 className="empty-state__title">Start Your Search</h3>
           <p className="empty-state__text">
             Describe the role you&apos;re looking for in plain English.

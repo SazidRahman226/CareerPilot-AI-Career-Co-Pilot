@@ -10,6 +10,25 @@
 import { useState, useEffect, useRef } from "react";
 import { uploadCV, getCVStatus, clearCV } from "@/lib/api";
 import { useCvStatus } from "@/contexts/cv-status-context";
+import {
+  Upload,
+  Loader2,
+  CheckCircle,
+  FileText,
+  Trash2,
+  Target,
+  Briefcase,
+  GraduationCap,
+  Wrench,
+  Rocket,
+  Award,
+  BookOpen,
+  Globe,
+  Phone,
+  Users,
+  File,
+  Edit3,
+} from "lucide-react";
 
 export default function ProfilePage() {
   const { cvStatus, refreshCvStatus } = useCvStatus();
@@ -108,19 +127,19 @@ export default function ProfilePage() {
     }
   };
 
-  const sectionEmojis: Record<string, string> = {
-    summary: "📝",
-    experience: "💼",
-    education: "🎓",
-    skills: "🛠️",
-    projects: "🚀",
-    certifications: "📜",
-    awards: "🏆",
-    publications: "📚",
-    languages: "🌐",
-    contact: "📞",
-    references: "👥",
-    general: "📄",
+  const sectionIcons: Record<string, React.ReactNode> = {
+    summary: <Edit3 size={14} />,
+    experience: <Briefcase size={14} />,
+    education: <GraduationCap size={14} />,
+    skills: <Wrench size={14} />,
+    projects: <Rocket size={14} />,
+    certifications: <Award size={14} />,
+    awards: <Award size={14} />,
+    publications: <BookOpen size={14} />,
+    languages: <Globe size={14} />,
+    contact: <Phone size={14} />,
+    references: <Users size={14} />,
+    general: <File size={14} />,
   };
 
   return (
@@ -144,7 +163,13 @@ export default function ProfilePage() {
             onClick={() => fileInputRef.current?.click()}
           >
             <div className="upload-zone__icon">
-              {uploading ? "⏳" : cvStatus.uploaded ? "✅" : "📄"}
+              {uploading ? (
+                <Loader2 size={40} style={{ animation: "spin 1s linear infinite" }} />
+              ) : cvStatus.uploaded ? (
+                <CheckCircle size={40} />
+              ) : (
+                <Upload size={40} />
+              )}
             </div>
             <h3 className="upload-zone__title">
               {uploading
@@ -193,13 +218,13 @@ export default function ProfilePage() {
             <div style={{
               marginTop: 16,
               padding: 12,
-              background: "rgba(239, 68, 68, 0.1)",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
+              background: "rgba(220, 38, 38, 0.05)",
+              border: "1px solid rgba(220, 38, 38, 0.12)",
               borderRadius: "var(--radius-md)",
               color: "var(--color-danger)",
               fontSize: 13,
             }}>
-              ⚠️ {error}
+              ⚠ {error}
             </div>
           )}
 
@@ -207,13 +232,16 @@ export default function ProfilePage() {
             <div style={{
               marginTop: 16,
               padding: 12,
-              background: "rgba(16, 185, 129, 0.1)",
-              border: "1px solid rgba(16, 185, 129, 0.2)",
+              background: "rgba(22, 163, 74, 0.05)",
+              border: "1px solid rgba(22, 163, 74, 0.12)",
               borderRadius: "var(--radius-md)",
               color: "var(--color-success)",
               fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}>
-              ✅ {success}
+              <CheckCircle size={14} /> {success}
             </div>
           )}
 
@@ -224,7 +252,7 @@ export default function ProfilePage() {
               onClick={handleClear}
               style={{ marginTop: 16, width: "100%" }}
             >
-              🗑️ Remove CV and Clear Data
+              <Trash2 size={14} /> Remove CV and Clear Data
             </button>
           )}
         </div>
@@ -245,8 +273,9 @@ export default function ProfilePage() {
                   background: "var(--bg-elevated)",
                   borderRadius: "var(--radius-md)",
                   textAlign: "center",
+                  border: "1px solid var(--border-subtle)",
                 }}>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text-accent)" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "var(--color-primary)" }}>
                     {cvStatus.chunk_count}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Content Chunks</div>
@@ -256,8 +285,9 @@ export default function ProfilePage() {
                   background: "var(--bg-elevated)",
                   borderRadius: "var(--radius-md)",
                   textAlign: "center",
+                  border: "1px solid var(--border-subtle)",
                 }}>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text-accent)" }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "var(--color-primary)" }}>
                     {cvStatus.sections_detected.length}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Sections Found</div>
@@ -266,13 +296,13 @@ export default function ProfilePage() {
 
               {/* Detected Sections */}
               <div>
-                <h4 style={{ fontSize: 14, fontWeight: 500, marginBottom: 12, color: "var(--text-secondary)" }}>
+                <h4 style={{ fontSize: 13, fontWeight: 500, marginBottom: 12, color: "var(--text-secondary)" }}>
                   Detected Sections
                 </h4>
                 <div className="sections-preview">
                   {cvStatus.sections_detected.map((section) => (
                     <span key={section} className="section-tag">
-                      {sectionEmojis[section] || "📄"} {section}
+                      {sectionIcons[section] || <File size={14} />} {section}
                     </span>
                   ))}
                 </div>
@@ -282,12 +312,12 @@ export default function ProfilePage() {
               <div style={{
                 marginTop: 20,
                 padding: 16,
-                background: "var(--gradient-card)",
+                background: "var(--bg-elevated)",
                 borderRadius: "var(--radius-md)",
-                border: "1px solid rgba(99, 102, 241, 0.15)",
+                border: "1px solid var(--border-subtle)",
               }}>
-                <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-                  🎯 What&apos;s Next?
+                <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Target size={14} style={{ color: "var(--color-primary)" }} /> What&apos;s Next?
                 </h4>
                 <ul style={{ fontSize: 13, color: "var(--text-secondary)", paddingLeft: 20 }}>
                   <li>Ask the <strong>AI Assistant</strong> about your skills and career readiness</li>
@@ -299,8 +329,10 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 400 }}>
-              <div style={{ fontSize: 64, marginBottom: 16, opacity: 0.3 }}>📄</div>
-              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: "var(--text-secondary)" }}>
+              <div style={{ marginBottom: 16, color: "var(--text-muted)", opacity: 0.3 }}>
+                <FileText size={64} />
+              </div>
+              <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8, color: "var(--text-secondary)" }}>
                 No CV Uploaded Yet
               </h3>
               <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", maxWidth: 300 }}>

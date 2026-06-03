@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { Compass } from "lucide-react";
 
 export default function LoginPage() {
   const { login, register } = useAuth();
@@ -72,7 +73,7 @@ export default function LoginPage() {
       <div className="auth-card">
         {/* Logo */}
         <div className="auth-card__logo">
-          <span className="auth-card__logo-icon">🚀</span>
+          <span className="auth-card__logo-icon"><Compass size={24} /></span>
           <h1 className="auth-card__logo-text">CareerPilot</h1>
           <p className="auth-card__logo-sub">AI Career Co-Pilot</p>
         </div>

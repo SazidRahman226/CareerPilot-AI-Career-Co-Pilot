@@ -1,7 +1,7 @@
 /**
  * CareerPilot — Root Layout
  * ===========================
- * App-wide layout with persistent sidebar, dark theme, and Google Fonts.
+ * App-wide layout with persistent sidebar, light theme, and Google Fonts.
  * Uses Next.js App Router layout pattern.
  */
 
@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
         <AppShell>{children}</AppShell>
       </body>

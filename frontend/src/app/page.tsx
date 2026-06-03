@@ -10,30 +10,47 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { getDashboardStats, type DashboardStats } from "@/lib/api";
+import {
+  Send,
+  CheckCircle,
+  Mic,
+  Target,
+  Upload,
+  Search,
+  MessageSquare,
+  Kanban,
+  FileText,
+  SearchIcon,
+  Mail,
+  MessageCircle,
+  CheckSquare,
+  Pin,
+  Lightbulb,
+} from "lucide-react";
 
-// Stat card configurations
+// Stat card configurations with Lucide icons
 const STAT_CONFIGS = [
-  { key: "total_applications", label: "Total Applications", icon: "📨", format: (v: number) => v.toString() },
-  { key: "applied_count", label: "Applied", icon: "✅", format: (v: number) => v.toString() },
-  { key: "interviewing_count", label: "Interviewing", icon: "🎙️", format: (v: number) => v.toString() },
-  { key: "avg_fit_score", label: "Avg Fit Score", icon: "🎯", format: (v: number) => `${v}%` },
+  { key: "total_applications", label: "Total Applications", icon: Send, format: (v: number) => v.toString() },
+  { key: "applied_count", label: "Applied", icon: CheckCircle, format: (v: number) => v.toString() },
+  { key: "interviewing_count", label: "Interviewing", icon: Mic, format: (v: number) => v.toString() },
+  { key: "avg_fit_score", label: "Avg Fit Score", icon: Target, format: (v: number) => `${v}%` },
 ];
 
 const QUICK_ACTIONS = [
-  { href: "/profile", icon: "📄", text: "Upload CV", desc: "Start with your resume" },
-  { href: "/jobs", icon: "🔍", text: "Search Jobs", desc: "Find matching roles" },
-  { href: "/chat", icon: "🤖", text: "Ask AI", desc: "Get career advice" },
-  { href: "/tracker", icon: "📋", text: "Track Apps", desc: "Manage applications" },
+  { href: "/profile", icon: Upload, text: "Upload CV", desc: "Start with your resume" },
+  { href: "/jobs", icon: Search, text: "Search Jobs", desc: "Find matching roles" },
+  { href: "/chat", icon: MessageSquare, text: "Ask AI", desc: "Get career advice" },
+  { href: "/tracker", icon: Kanban, text: "Track Apps", desc: "Manage applications" },
 ];
 
 function getActivityIcon(type: string) {
   switch (type) {
-    case "cv_upload": return "📄";
-    case "job_search": return "🔍";
-    case "application": return "📨";
-    case "chat": return "💬";
-    case "todo": return "✅";
-    default: return "📌";
+    case "cv_upload": return <FileText size={14} />;
+    case "job_search": return <SearchIcon size={14} />;
+    case "application": return <Mail size={14} />;
+    case "chat": return <MessageCircle size={14} />;
+    case "todo": return <CheckSquare size={14} />;
+    default: return <Pin size={14} />;
   }
 }
 
@@ -71,36 +88,42 @@ export default function DashboardPage() {
 
       {/* Stats Cards */}
       <div className="stats-grid">
-        {STAT_CONFIGS.map((config) => (
-          <div key={config.key} className="stat-card">
-            <div className="stat-card__icon">{config.icon}</div>
-            <div className="stat-card__value">
-              {loading ? (
-                <div className="skeleton" style={{ width: 60, height: 32 }} />
-              ) : (
-                config.format((stats as any)?.[config.key] ?? 0)
-              )}
+        {STAT_CONFIGS.map((config) => {
+          const Icon = config.icon;
+          return (
+            <div key={config.key} className="stat-card">
+              <div className="stat-card__icon"><Icon size={22} /></div>
+              <div className="stat-card__value">
+                {loading ? (
+                  <div className="skeleton" style={{ width: 60, height: 32 }} />
+                ) : (
+                  config.format((stats as any)?.[config.key] ?? 0)
+                )}
+              </div>
+              <div className="stat-card__label">{config.label}</div>
             </div>
-            <div className="stat-card__label">{config.label}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Quick Actions */}
       <div style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: "var(--text-primary)" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: "var(--text-primary)" }}>
           Quick Actions
         </h2>
         <div className="quick-actions">
-          {QUICK_ACTIONS.map((action) => (
-            <Link key={action.href} href={action.href} className="quick-action">
-              <div className="quick-action__icon">{action.icon}</div>
-              <div>
-                <div className="quick-action__text">{action.text}</div>
-                <div className="quick-action__desc">{action.desc}</div>
-              </div>
-            </Link>
-          ))}
+          {QUICK_ACTIONS.map((action) => {
+            const Icon = action.icon;
+            return (
+              <Link key={action.href} href={action.href} className="quick-action">
+                <div className="quick-action__icon"><Icon size={20} /></div>
+                <div>
+                  <div className="quick-action__text">{action.text}</div>
+                  <div className="quick-action__desc">{action.desc}</div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
 
@@ -165,10 +188,10 @@ export default function DashboardPage() {
               )}
             </div>
             <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
-              <span>🔵 Applied</span>
-              <span>🟡 Interviewing</span>
-              <span>🟢 Offers</span>
-              <span>🔴 Rejected</span>
+              <span><span className="legend-dot legend-dot--blue" />Applied</span>
+              <span><span className="legend-dot legend-dot--yellow" />Interviewing</span>
+              <span><span className="legend-dot legend-dot--green" />Offers</span>
+              <span><span className="legend-dot legend-dot--red" />Rejected</span>
             </div>
           </div>
 
@@ -194,12 +217,12 @@ export default function DashboardPage() {
           <div style={{
             marginTop: 20,
             padding: 16,
-            background: "var(--gradient-card)",
+            background: "var(--bg-elevated)",
             borderRadius: "var(--radius-md)",
-            border: "1px solid rgba(99, 102, 241, 0.15)",
+            border: "1px solid var(--border-subtle)",
           }}>
-            <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>
-              💡 AI Nudge
+            <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+              <Lightbulb size={16} style={{ color: "var(--color-warning)" }} /> AI Nudge
             </div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
               {stats?.total_applications === 0

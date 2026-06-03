@@ -9,6 +9,15 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat, type Message } from "@/hooks/use-chat";
+import {
+  User,
+  Bot,
+  Trash2,
+  RefreshCw,
+  Send,
+  Loader2,
+  FileText,
+} from "lucide-react";
 
 const SUGGESTED_PROMPTS = [
   "Am I ready for a Machine Learning role?",
@@ -23,7 +32,7 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`message message--${message.role}`}>
       <div className="message__avatar">
-        {message.role === "user" ? "👤" : "🤖"}
+        {message.role === "user" ? <User size={16} /> : <Bot size={16} />}
       </div>
       <div>
         <div className="message__bubble">
@@ -46,7 +55,7 @@ function MessageBubble({ message }: { message: Message }) {
           <div className="message__sources">
             {message.sources.map((source, i) => (
               <span key={i} className="message__source-tag">
-                📄 {source}
+                <FileText size={10} /> {source}
               </span>
             ))}
           </div>
@@ -141,16 +150,16 @@ export default function ChatPage() {
         <div style={{ display: "flex", gap: "8px" }}>
           {historyLoading ? (
             <button className="btn btn--ghost" disabled>
-              ⏳ Refreshing...
+              <Loader2 size={14} className="spin" /> Refreshing...
             </button>
           ) : (
             <button className="btn btn--ghost" onClick={refreshChat} title="Refresh chat from server">
-              🔄 Refresh
+              <RefreshCw size={14} /> Refresh
             </button>
           )}
           {messages.length > 0 && (
             <button className="btn btn--ghost" onClick={clearMessages}>
-              🗑️ Clear Chat
+              <Trash2 size={14} /> Clear Chat
             </button>
           )}
         </div>
@@ -162,7 +171,7 @@ export default function ChatPage() {
         <div className="chat-messages">
           {messages.length === 0 ? (
             <div className="empty-state" style={{ margin: "auto" }}>
-              <div className="empty-state__icon">🤖</div>
+              <div className="empty-state__icon"><Bot size={40} /></div>
               <h3 className="empty-state__title">How can I help you today?</h3>
               <p className="empty-state__text">
                 I&apos;m your AI career co-pilot. Ask me about job readiness, skill gaps,
@@ -227,7 +236,7 @@ export default function ChatPage() {
               disabled={!input.trim() || isLoading}
               title="Send message"
             >
-              {isLoading ? "⏳" : "➤"}
+              {isLoading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={18} />}
             </button>
           </form>
         </div>
