@@ -35,40 +35,52 @@ export function useChat(conversationId: string = "default") {
   const messageIdCounter = useRef(0);
 
   /**
-   * Merge DB-loaded messages into existing local state, dropping duplicates
-   * by role+content. Handles two cases:
-   *   - Optimistic `msg-*` entries that were just persisted come back from
-   *     the DB as `db-*` entries, so we drop the optimistic copy.
-   *   - Pre-existing duplicate rows in the DB (from before the backend
-   *     dedupe guard) collapse to a single message in the UI.
+   * Merge DB-loaded messages into existing local state.
+   *
+   * Deduplication uses the **database id** (the `db-{id}` prefix) so that
+   * legitimately repeated questions each keep their own row.  Optimistic
+   * `msg-*` entries are matched by role+content and replaced by their DB
+   * counterpart once the history reload delivers the persisted copy.
    */
   const mergeHistory = useCallback((loaded: Message[]) => {
     setMessages((prev: Message[]) => {
-      // Collapse the incoming DB list, keeping the oldest copy.
-      const seenDb = new Set<string>();
+      // Deduplicate the incoming DB list by unique database id.
+      const seenDbIds = new Set<string>();
       const uniqueLoaded: Message[] = [];
       for (const m of loaded) {
-        const key = `${m.role}::${m.content.trim()}`;
-        if (seenDb.has(key)) continue;
-        seenDb.add(key);
+        if (seenDbIds.has(m.id)) continue;
+        seenDbIds.add(m.id);
         uniqueLoaded.push(m);
       }
 
-      const isDuplicate = (a: Message, b: Message) => {
-        if (a.role !== b.role) return false;
-        return a.content.trim() === b.content.trim();
-      };
+      // Remove optimistic (`msg-*`) entries whose content already appears
+      // in the DB payload — but only consume each DB match once so that
+      // two identical questions don't both swallow the same optimistic entry.
+      const dbMatchUsed = new Set<string>();
+      const cleanedPrev: Message[] = prev.filter((p: Message) => {
+        if (!p.id.startsWith("msg-")) return true;           // keep db-* entries
+        const match = uniqueLoaded.find(
+          (l: Message) =>
+            !dbMatchUsed.has(l.id) &&
+            l.role === p.role &&
+            l.content.trim() === p.content.trim()
+        );
+        if (match) {
+          dbMatchUsed.add(match.id);                          // consume the match
+          return false;                                       // drop the optimistic entry
+        }
+        return true;                                          // no DB match yet — keep it
+      });
 
-      const cleanedPrev: Message[] = prev.filter(
-        (p: Message) => !p.id.startsWith("msg-") || !uniqueLoaded.some((l: Message) => isDuplicate(p, l))
-      );
-
+      // Append DB entries that aren't already present (by id).
+      const existingIds = new Set(cleanedPrev.map((m) => m.id));
       const merged: Message[] = [...cleanedPrev];
       for (const l of uniqueLoaded) {
-        if (!cleanedPrev.some((p: Message) => isDuplicate(p, l))) {
+        if (!existingIds.has(l.id)) {
           merged.push(l);
         }
       }
+
       merged.sort(
         (a, b) =>
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
