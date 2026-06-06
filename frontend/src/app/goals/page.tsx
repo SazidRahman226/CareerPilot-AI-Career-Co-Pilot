@@ -4,11 +4,12 @@
  * SMART goal setting with progress bars, categories, templates,
  * and auto-progress tracking. Data persisted in localStorage.
  * Application-type goals auto-count from Kanban data.
+ * Learning goals have a topic-based checklist system.
  */
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { getApplications, type Application } from "@/lib/api";
 import {
   Target,
@@ -27,9 +28,17 @@ import {
   Sparkles,
   ArrowRight,
   RotateCcw,
+  ClipboardList,
+  Pencil,
+  Check,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────
+
+interface GoalTopic {
+  name: string;
+  completed: boolean;
+}
 
 interface Goal {
   id: string;
@@ -41,6 +50,7 @@ interface Goal {
   status: "active" | "completed" | "expired";
   createdAt: string;
   autoTrack: boolean; // for application goals
+  topics?: GoalTopic[]; // for learning goals
 }
 
 const GOAL_TEMPLATES: Omit<Goal, "id" | "createdAt" | "currentCount" | "status">[] = [
@@ -64,6 +74,7 @@ const GOAL_TEMPLATES: Omit<Goal, "id" | "createdAt" | "currentCount" | "status">
     targetCount: 1,
     deadline: getNextFriday(),
     autoTrack: false,
+    topics: [{ name: "", completed: false }],
   },
   {
     title: "Complete 10 LeetCode problems",
@@ -71,6 +82,7 @@ const GOAL_TEMPLATES: Omit<Goal, "id" | "createdAt" | "currentCount" | "status">
     targetCount: 10,
     deadline: getEndOfWeek(),
     autoTrack: false,
+    topics: Array.from({ length: 10 }, () => ({ name: "", completed: false })),
   },
   {
     title: "Attend 2 networking events",
@@ -170,6 +182,159 @@ const CATEGORIES = {
   skills: { label: "Skills", icon: Zap, color: "var(--color-warning)" },
 };
 
+// ── Topic Checklist Popup ────────────────────────────────
+
+function TopicChecklistPopup({
+  goal,
+  onToggleTopic,
+  onEditTopics,
+  onClose,
+}: {
+  goal: Goal;
+  onToggleTopic: (goalId: string, topicIndex: number) => void;
+  onEditTopics: (goalId: string) => void;
+  onClose: () => void;
+}) {
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose]);
+
+  const topics = goal.topics || [];
+  const completedCount = topics.filter((t) => t.completed).length;
+
+  return (
+    <div className="goal-topics-popup" ref={popupRef}>
+      <div className="goal-topics-popup__header">
+        <span className="goal-topics-popup__title">
+          <ClipboardList size={14} /> Topics ({completedCount}/{topics.length})
+        </span>
+        <button
+          className="goal-topics-popup__edit-btn"
+          onClick={() => {
+            onEditTopics(goal.id);
+            onClose();
+          }}
+          title="Edit topic names"
+        >
+          <Pencil size={12} /> Edit
+        </button>
+      </div>
+      <div className="goal-topics-popup__list">
+        {topics.map((topic, i) => (
+          <button
+            key={i}
+            className={`goal-topics-popup__item ${topic.completed ? "goal-topics-popup__item--done" : ""}`}
+            onClick={() => onToggleTopic(goal.id, i)}
+          >
+            <span className="goal-topics-popup__check">
+              {topic.completed ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+            </span>
+            <span className="goal-topics-popup__name">
+              {topic.name || `Topic ${i + 1}`}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Edit Topics Modal ────────────────────────────────────
+
+function EditTopicsModal({
+  goal,
+  onSave,
+  onClose,
+}: {
+  goal: Goal;
+  onSave: (goalId: string, topics: GoalTopic[]) => void;
+  onClose: () => void;
+}) {
+  const [editTopics, setEditTopics] = useState<GoalTopic[]>(
+    goal.topics ? goal.topics.map((t) => ({ ...t })) : []
+  );
+
+  const handleNameChange = (index: number, name: string) => {
+    setEditTopics(editTopics.map((t, i) => (i === index ? { ...t, name } : t)));
+  };
+
+  const handleAddTopic = () => {
+    setEditTopics([...editTopics, { name: "", completed: false }]);
+  };
+
+  const handleRemoveTopic = (index: number) => {
+    if (editTopics.length <= 1) return;
+    setEditTopics(editTopics.filter((_, i) => i !== index));
+  };
+
+  const handleSave = () => {
+    onSave(goal.id, editTopics);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2 className="modal__title">
+          <Pencil size={16} /> Edit Topics
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }}>
+          {goal.title} — update topic names or add/remove topics.
+        </p>
+        <div className="goal-edit-topics">
+          {editTopics.map((topic, i) => (
+            <div key={i} className="goal-edit-topics__row">
+              <span className="goal-edit-topics__num">{i + 1}</span>
+              <input
+                className="input"
+                value={topic.name}
+                onChange={(e) => handleNameChange(i, e.target.value)}
+                placeholder={`Topic ${i + 1} (optional)`}
+              />
+              <span
+                className={`goal-edit-topics__status ${topic.completed ? "goal-edit-topics__status--done" : ""}`}
+              >
+                {topic.completed ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+              </span>
+              <button
+                className="goal-edit-topics__remove"
+                onClick={() => handleRemoveTopic(i)}
+                disabled={editTopics.length <= 1}
+                title="Remove topic"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          className="btn btn--ghost"
+          onClick={handleAddTopic}
+          style={{ marginTop: 8, fontSize: 12 }}
+        >
+          <Plus size={12} /> Add Topic
+        </button>
+        <div className="modal__actions">
+          <button type="button" className="btn btn--secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn--primary" onClick={handleSave}>
+            <Check size={14} /> Save Topics
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ────────────────────────────────────────────
 
 export default function GoalsPage() {
@@ -179,6 +344,8 @@ export default function GoalsPage() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [filter, setFilter] = useState<"all" | "active" | "completed" | "expired">("all");
   const [loaded, setLoaded] = useState(false);
+  const [openChecklistId, setOpenChecklistId] = useState<string | null>(null);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
 
   // New goal form
   const [newGoal, setNewGoal] = useState({
@@ -188,6 +355,7 @@ export default function GoalsPage() {
     deadline: getEndOfWeek(),
     autoTrack: false,
   });
+  const [newTopicNames, setNewTopicNames] = useState<string[]>([]);
 
   // Load goals from localStorage
   useEffect(() => {
@@ -207,9 +375,21 @@ export default function GoalsPage() {
     if (loaded) saveGoals(goals);
   }, [goals, loaded]);
 
-  // Auto-track application goals
+  // Sync topic inputs when category/targetCount change
+  useEffect(() => {
+    if (newGoal.category === "learning") {
+      setNewTopicNames((prev) => {
+        const arr = [...prev];
+        while (arr.length < newGoal.targetCount) arr.push("");
+        return arr.slice(0, newGoal.targetCount);
+      });
+    } else {
+      setNewTopicNames([]);
+    }
+  }, [newGoal.category, newGoal.targetCount]);
+
+  // Auto-track application goals + compute learning topic counts
   const processedGoals = useMemo(() => {
-    const now = new Date();
     return goals.map((goal) => {
       let g = { ...goal };
 
@@ -221,6 +401,12 @@ export default function GoalsPage() {
           return appDate && new Date(appDate) >= goalCreated;
         });
         g.currentCount = appsAfterCreation.length;
+      }
+
+      // Learning goals: count from topics
+      if (g.category === "learning" && g.topics) {
+        g.currentCount = g.topics.filter((t) => t.completed).length;
+        g.targetCount = g.topics.length;
       }
 
       // Auto-update status
@@ -256,12 +442,18 @@ export default function GoalsPage() {
     e.preventDefault();
     if (!newGoal.title.trim()) return;
 
+    const isLearning = newGoal.category === "learning";
+    const topics: GoalTopic[] | undefined = isLearning
+      ? newTopicNames.map((name) => ({ name: name.trim(), completed: false }))
+      : undefined;
+
     const goal: Goal = {
       id: `goal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       ...newGoal,
       currentCount: 0,
       status: "active",
       createdAt: new Date().toISOString(),
+      topics,
     };
 
     setGoals([goal, ...goals]);
@@ -273,6 +465,7 @@ export default function GoalsPage() {
       deadline: getEndOfWeek(),
       autoTrack: false,
     });
+    setNewTopicNames([]);
   };
 
   // Use template
@@ -283,13 +476,46 @@ export default function GoalsPage() {
       currentCount: 0,
       status: "active",
       createdAt: new Date().toISOString(),
+      topics: template.topics
+        ? template.topics.map((t) => ({ ...t }))
+        : template.category === "learning"
+          ? Array.from({ length: template.targetCount }, () => ({ name: "", completed: false }))
+          : undefined,
     };
 
     setGoals([goal, ...goals]);
     setShowTemplates(false);
   };
 
-  // Increment manual goal
+  // Toggle topic completion
+  const handleToggleTopic = (goalId: string, topicIndex: number) => {
+    setGoals(goals.map((g) => {
+      if (g.id !== goalId || !g.topics) return g;
+      const updatedTopics = g.topics.map((t, i) =>
+        i === topicIndex ? { ...t, completed: !t.completed } : t
+      );
+      return {
+        ...g,
+        topics: updatedTopics,
+        currentCount: updatedTopics.filter((t) => t.completed).length,
+      };
+    }));
+  };
+
+  // Save edited topics
+  const handleSaveTopics = (goalId: string, topics: GoalTopic[]) => {
+    setGoals(goals.map((g) => {
+      if (g.id !== goalId) return g;
+      return {
+        ...g,
+        topics,
+        targetCount: topics.length,
+        currentCount: topics.filter((t) => t.completed).length,
+      };
+    }));
+  };
+
+  // Increment manual goal (non-learning, non-auto)
   const handleIncrement = (goalId: string) => {
     setGoals(goals.map((g) =>
       g.id === goalId ? { ...g, currentCount: Math.min(g.currentCount + 1, g.targetCount) } : g
@@ -306,16 +532,26 @@ export default function GoalsPage() {
   // Delete goal
   const handleDeleteGoal = (goalId: string) => {
     setGoals(goals.filter((g) => g.id !== goalId));
+    if (openChecklistId === goalId) setOpenChecklistId(null);
   };
 
   // Reset goal
   const handleResetGoal = (goalId: string) => {
-    setGoals(goals.map((g) =>
-      g.id === goalId
-        ? { ...g, currentCount: 0, status: "active" as const, deadline: getEndOfWeek(), createdAt: new Date().toISOString() }
-        : g
-    ));
+    setGoals(goals.map((g) => {
+      if (g.id !== goalId) return g;
+      return {
+        ...g,
+        currentCount: 0,
+        status: "active" as const,
+        deadline: getEndOfWeek(),
+        createdAt: new Date().toISOString(),
+        topics: g.topics ? g.topics.map((t) => ({ ...t, completed: false })) : undefined,
+      };
+    }));
   };
+
+  // Editing goal for topics
+  const editingGoal = editingGoalId ? goals.find((g) => g.id === editingGoalId) : null;
 
   return (
     <div>
@@ -395,6 +631,8 @@ export default function GoalsPage() {
               : 0;
             const deadlineLabel = formatDeadline(goal.deadline);
             const isUrgent = daysUntil(goal.deadline) <= 2 && goal.status === "active";
+            const isLearning = goal.category === "learning" && !!goal.topics;
+            const isManual = !goal.autoTrack && !isLearning;
 
             return (
               <div
@@ -482,8 +720,35 @@ export default function GoalsPage() {
                     )}
                   </div>
 
-                  {/* Manual increment/decrement for non-auto goals */}
-                  {!goal.autoTrack && goal.status === "active" && (
+                  {/* Learning goals: Topic checklist button */}
+                  {isLearning && goal.status === "active" && (
+                    <div className="goal-card__topics-area">
+                      <button
+                        className="goal-topics-btn"
+                        onClick={() =>
+                          setOpenChecklistId(openChecklistId === goal.id ? null : goal.id)
+                        }
+                      >
+                        <ClipboardList size={14} />
+                        Mark Topics
+                        <span className="goal-topics-btn__badge">
+                          {goal.topics!.filter((t) => t.completed).length}/{goal.topics!.length}
+                        </span>
+                      </button>
+
+                      {openChecklistId === goal.id && (
+                        <TopicChecklistPopup
+                          goal={goal}
+                          onToggleTopic={handleToggleTopic}
+                          onEditTopics={(id) => setEditingGoalId(id)}
+                          onClose={() => setOpenChecklistId(null)}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Non-learning, non-auto: manual +/- buttons */}
+                  {isManual && goal.status === "active" && (
                     <div className="goal-card__manual">
                       <button
                         className="goal-card__manual-btn"
@@ -507,6 +772,15 @@ export default function GoalsPage() {
             );
           })}
         </div>
+      )}
+
+      {/* Edit Topics Modal */}
+      {editingGoal && (
+        <EditTopicsModal
+          goal={editingGoal}
+          onSave={handleSaveTopics}
+          onClose={() => setEditingGoalId(null)}
+        />
       )}
 
       {/* Templates Modal */}
@@ -591,7 +865,7 @@ export default function GoalsPage() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Target Count</label>
+                  <label>{newGoal.category === "learning" ? "Number of Topics" : "Target Count"}</label>
                   <input
                     className="input"
                     type="number"
@@ -611,6 +885,8 @@ export default function GoalsPage() {
                   onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
                 />
               </div>
+
+              {/* Application auto-track info */}
               {newGoal.category === "applications" && (
                 <div style={{
                   padding: "10px 14px",
@@ -628,6 +904,37 @@ export default function GoalsPage() {
                   Progress will auto-track from your Kanban board applications.
                 </div>
               )}
+
+              {/* Learning: Topic name inputs */}
+              {newGoal.category === "learning" && (
+                <div className="form-group">
+                  <label>
+                    <GraduationCap size={13} style={{ marginRight: 4, verticalAlign: -2 }} />
+                    Topic Names
+                    <span style={{ fontWeight: 400, color: "var(--text-muted)", marginLeft: 6, fontSize: 11 }}>
+                      (optional — you can fill these later)
+                    </span>
+                  </label>
+                  <div className="goal-topics-inputs">
+                    {newTopicNames.map((name, i) => (
+                      <div key={i} className="goal-topics-input-row">
+                        <span className="goal-topics-input-num">{i + 1}</span>
+                        <input
+                          className="input"
+                          value={name}
+                          onChange={(e) => {
+                            const updated = [...newTopicNames];
+                            updated[i] = e.target.value;
+                            setNewTopicNames(updated);
+                          }}
+                          placeholder={`e.g., Topic ${i + 1}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="modal__actions">
                 <button type="button" className="btn btn--secondary" onClick={() => setShowAddModal(false)}>
                   Cancel

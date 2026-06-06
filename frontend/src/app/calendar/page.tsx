@@ -4,11 +4,12 @@
  * Interactive monthly calendar with deadline reminders, to-do items,
  * and application events. Color-coded dots indicate event types.
  * Sources data from existing Applications and Todos APIs.
+ * Includes browser notification system for upcoming deadlines.
  */
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   getApplications,
   getTodos,
@@ -34,6 +35,9 @@ import {
   Briefcase,
   GraduationCap,
   Zap,
+  Bell,
+  BellOff,
+  BellRing,
 } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────
@@ -70,6 +74,71 @@ interface CalendarEvent {
   rawApp?: Application;
 }
 
+// ── Notification helpers ─────────────────────────────────
+
+const NOTIF_SHOWN_KEY = "careerpilot-notif-shown";
+const NOTIF_ENABLED_KEY = "careerpilot-notif-enabled";
+
+function getShownNotifIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = sessionStorage.getItem(NOTIF_SHOWN_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveShownNotifId(id: string) {
+  if (typeof window === "undefined") return;
+  const shown = getShownNotifIds();
+  shown.add(id);
+  sessionStorage.setItem(NOTIF_SHOWN_KEY, JSON.stringify([...shown]));
+}
+
+function canNotify(): boolean {
+  if (typeof window === "undefined") return false;
+  return "Notification" in window && Notification.permission === "granted";
+}
+
+function loadNotifEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const val = localStorage.getItem(NOTIF_ENABLED_KEY);
+    return val === null ? true : val === "true";
+  } catch {
+    return true;
+  }
+}
+
+function saveNotifEnabled(enabled: boolean) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(NOTIF_ENABLED_KEY, String(enabled));
+}
+
+function fireNotification(title: string, body: string, tag: string) {
+  if (!canNotify()) return;
+  const shown = getShownNotifIds();
+  if (shown.has(tag)) return; // already shown this session
+
+  try {
+    const notif = new Notification(title, {
+      body,
+      icon: "/favicon.ico",
+      tag,
+      silent: false,
+    });
+    // Click notification → focus app and go to calendar
+    notif.onclick = () => {
+      window.focus();
+      notif.close();
+    };
+    saveShownNotifId(tag);
+  } catch (err) {
+    console.error("Notification error:", err);
+  }
+}
+
 // ── Component ────────────────────────────────────────────
 
 export default function CalendarPage() {
@@ -83,6 +152,11 @@ export default function CalendarPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addDate, setAddDate] = useState<string>(formatDate(today));
 
+  // Notification state
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const notifIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // New todo form
   const [newTodo, setNewTodo] = useState({
     title: "",
@@ -91,6 +165,157 @@ export default function CalendarPage() {
     category: "general",
     due_date: "",
   });
+
+  // ── Notification system ──────────────────────────────
+
+  // Check permission and enabled state on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifPermission(Notification.permission);
+    }
+    setNotifEnabled(loadNotifEnabled());
+  }, []);
+
+  // Request notification permission
+  const requestNotifPermission = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    try {
+      const result = await Notification.requestPermission();
+      setNotifPermission(result);
+      if (result === "granted") {
+        setNotifEnabled(true);
+        saveNotifEnabled(true);
+      }
+    } catch (err) {
+      console.error("Permission request failed:", err);
+    }
+  };
+
+  // Toggle notifications on/off
+  const toggleNotifications = () => {
+    const next = !notifEnabled;
+    setNotifEnabled(next);
+    saveNotifEnabled(next);
+  };
+
+  // Check and fire notifications for due items
+  const checkNotifications = useCallback(() => {
+    if (!canNotify() || !notifEnabled) return;
+
+    const todayStr = formatDate(new Date());
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrowStr = formatDate(tomorrowDate);
+
+    // Check todos due today
+    todos.forEach((todo) => {
+      if (!todo.due_date || todo.completed) return;
+      const dueDate = todo.due_date.split("T")[0];
+      if (dueDate === todayStr) {
+        fireNotification(
+          "📋 Task Due Today",
+          todo.title,
+          `todo-today-${todo.id}`
+        );
+      } else if (dueDate === tomorrowStr) {
+        fireNotification(
+          "📋 Task Due Tomorrow",
+          todo.title,
+          `todo-tomorrow-${todo.id}`
+        );
+      }
+    });
+
+    // Check application deadlines
+    applications.forEach((app) => {
+      if (!app.deadline) return;
+      const deadlineDate = app.deadline.split("T")[0];
+      if (deadlineDate === todayStr) {
+        fireNotification(
+          "⚠️ Application Deadline Today",
+          `${app.role} at ${app.company}`,
+          `deadline-today-${app.id}`
+        );
+      } else if (deadlineDate === tomorrowStr) {
+        fireNotification(
+          "⏰ Deadline Tomorrow",
+          `${app.role} at ${app.company}`,
+          `deadline-tomorrow-${app.id}`
+        );
+      }
+
+      // Interview today
+      if (app.status === "interviewing" && app.deadline) {
+        const interviewDate = app.deadline.split("T")[0];
+        if (interviewDate === todayStr) {
+          fireNotification(
+            "🎤 Interview Today!",
+            `${app.role} at ${app.company} — Good luck!`,
+            `interview-today-${app.id}`
+          );
+        }
+      }
+    });
+  }, [todos, applications, notifEnabled]);
+
+  // Set up notification interval
+  useEffect(() => {
+    if (notifPermission === "granted" && notifEnabled) {
+      // Check immediately
+      checkNotifications();
+      // Then every 60 seconds
+      notifIntervalRef.current = setInterval(checkNotifications, 60000);
+    }
+    return () => {
+      if (notifIntervalRef.current) {
+        clearInterval(notifIntervalRef.current);
+      }
+    };
+  }, [notifPermission, notifEnabled, checkNotifications]);
+
+  // Count of today's due items for bell badge
+  const todayDueCount = useMemo(() => {
+    const todayStr = formatDate(new Date());
+    let count = 0;
+    todos.forEach((todo) => {
+      if (todo.due_date && !todo.completed && todo.due_date.split("T")[0] === todayStr) count++;
+    });
+    applications.forEach((app) => {
+      if (app.deadline && app.deadline.split("T")[0] === todayStr) count++;
+    });
+    return count;
+  }, [todos, applications]);
+
+  // Today's reminders
+  const todayReminders = useMemo(() => {
+    const todayStr = formatDate(new Date());
+    const items: { id: string; title: string; type: string; urgent: boolean }[] = [];
+
+    todos.forEach((todo) => {
+      if (!todo.due_date || todo.completed) return;
+      const dueDate = todo.due_date.split("T")[0];
+      if (dueDate === todayStr) {
+        items.push({ id: `tr-${todo.id}`, title: todo.title, type: "task", urgent: true });
+      } else if (dueDate < todayStr) {
+        items.push({ id: `tr-overdue-${todo.id}`, title: `${todo.title} (overdue)`, type: "overdue", urgent: true });
+      }
+    });
+
+    applications.forEach((app) => {
+      if (!app.deadline) return;
+      const deadlineDate = app.deadline.split("T")[0];
+      if (deadlineDate === todayStr) {
+        items.push({
+          id: `tr-dl-${app.id}`,
+          title: `${app.role} at ${app.company}`,
+          type: app.status === "interviewing" ? "interview" : "deadline",
+          urgent: true,
+        });
+      }
+    });
+
+    return items;
+  }, [todos, applications]);
 
   // Load data
   const loadData = useCallback(async () => {
@@ -306,10 +531,64 @@ export default function CalendarPage() {
             Track deadlines, interviews, and to-do items on your career timeline.
           </p>
         </div>
-        <button className="btn btn--primary" onClick={() => handleAddForDate(selectedDate || todayStr)}>
-          <Plus size={14} /> Add Event
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Notification Bell */}
+          <button
+            className={`cal-notif-bell ${todayDueCount > 0 && notifEnabled ? "cal-notif-bell--active" : ""} ${notifPermission === "granted" && !notifEnabled ? "cal-notif-bell--off" : ""}`}
+            onClick={() => {
+              if (notifPermission !== "granted") {
+                requestNotifPermission();
+              } else {
+                toggleNotifications();
+              }
+            }}
+            title={
+              notifPermission !== "granted"
+                ? "Click to enable notifications"
+                : notifEnabled
+                  ? `Notifications ON — ${todayDueCount} items due today (click to turn off)`
+                  : "Notifications OFF (click to turn on)"
+            }
+          >
+            {notifPermission === "granted" ? (
+              notifEnabled ? (
+                todayDueCount > 0 ? <BellRing size={18} /> : <Bell size={18} />
+              ) : (
+                <BellOff size={18} />
+              )
+            ) : (
+              <BellOff size={18} />
+            )}
+            {todayDueCount > 0 && notifPermission === "granted" && notifEnabled && (
+              <span className="cal-notif-bell__badge">{todayDueCount}</span>
+            )}
+          </button>
+
+          <button className="btn btn--primary" onClick={() => handleAddForDate(selectedDate || todayStr)}>
+            <Plus size={14} /> Add Event
+          </button>
+        </div>
       </div>
+
+      {/* Notification Permission Banner */}
+      {notifPermission === "default" && (
+        <div className="cal-notif-banner">
+          <div className="cal-notif-banner__content">
+            <Bell size={16} />
+            <span>Enable notifications to get reminders for deadlines and tasks due today.</span>
+          </div>
+          <button className="btn btn--primary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={requestNotifPermission}>
+            Enable Notifications
+          </button>
+          <button
+            className="cal-notif-banner__dismiss"
+            onClick={() => setNotifPermission("denied")}
+            title="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="cal-legend">
@@ -328,6 +607,30 @@ export default function CalendarPage() {
         <span className="cal-legend__item">
           <span className="cal-dot cal-dot--done" /> Completed
         </span>
+        {notifPermission === "granted" && (
+          <button
+            className="cal-legend__notif-toggle"
+            onClick={toggleNotifications}
+            style={{
+              marginLeft: "auto",
+              color: notifEnabled ? "var(--color-success)" : "var(--text-muted)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              fontFamily: "inherit",
+              padding: "4px 8px",
+              borderRadius: "var(--radius-sm)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {notifEnabled ? <Bell size={12} /> : <BellOff size={12} />}
+            Notifications {notifEnabled ? "on" : "off"}
+          </button>
+        )}
       </div>
 
       <div className="cal-layout">
@@ -417,6 +720,22 @@ export default function CalendarPage() {
 
         {/* Day Detail Panel */}
         <div className="cal-detail">
+          {/* Today's Reminders (only when today is selected) */}
+          {selectedDate === todayStr && todayReminders.length > 0 && (
+            <div className="cal-reminders">
+              <h4 className="cal-reminders__title">
+                <BellRing size={14} className="cal-reminders__icon" />
+                Today&apos;s Reminders
+              </h4>
+              {todayReminders.map((item) => (
+                <div key={item.id} className={`cal-reminders__item cal-reminders__item--${item.type}`}>
+                  <AlertTriangle size={12} />
+                  <span>{item.title}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="cal-detail__header">
             <h3 className="cal-detail__title">
               {selectedDate

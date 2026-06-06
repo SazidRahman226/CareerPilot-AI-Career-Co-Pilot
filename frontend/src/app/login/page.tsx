@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { Compass } from "lucide-react";
+import { Compass, User } from "lucide-react";
 
 export default function LoginPage() {
   const { login, register } = useAuth();
@@ -55,6 +55,24 @@ export default function LoginPage() {
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Authentication failed. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Demo user one-click login
+  const handleDemoLogin = async () => {
+    setError("");
+    setIsRegister(false);
+    setEmail("user@example.com");
+    setPassword("user");
+    setLoading(true);
+    try {
+      await login("user@example.com", "user");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Demo login failed. Please try again."
       );
     } finally {
       setLoading(false);
@@ -182,6 +200,19 @@ export default function LoginPage() {
               isRegister ? "Create Account" : "Sign In"
             )}
           </button>
+
+          {/* Demo User Quick Login */}
+          {!isRegister && (
+            <button
+              type="button"
+              className="auth-demo-btn"
+              onClick={handleDemoLogin}
+              disabled={loading}
+            >
+              <User size={15} />
+              Demo User Login
+            </button>
+          )}
         </form>
 
         {/* Footer */}

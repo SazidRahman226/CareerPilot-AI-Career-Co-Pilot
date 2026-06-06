@@ -23,6 +23,44 @@ logger = logging.getLogger(__name__)
 
 
 # ============================
+#  Demo User Seeder
+# ============================
+
+def _seed_demo_user():
+    """Create a demo user account for easy testing/judging if it doesn't exist."""
+    from app.database import SessionLocal
+    from app.models.db_models import User, UserProfile
+    from app.services.auth_service import hash_password
+
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.email == "user@example.com").first()
+        if existing:
+            logger.info("👤 Demo user already exists (user@example.com)")
+            return
+
+        user = User(
+            name="Demo User",
+            email="user@example.com",
+            hashed_password=hash_password("user"),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        profile = UserProfile(user_id=user.id)
+        db.add(profile)
+        db.commit()
+
+        logger.info("👤 Demo user created: user@example.com / user")
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"Could not seed demo user: {e}")
+    finally:
+        db.close()
+
+
+# ============================
 #  Application Lifespan
 # ============================
 
@@ -45,6 +83,9 @@ async def lifespan(app: FastAPI):
     # Initialize ChromaDB vector store
     vector_store.initialize()
     logger.info("✅ ChromaDB vector store initialized")
+
+    # Seed demo user for easy testing / judging
+    _seed_demo_user()
 
     logger.info(f"📦 LLM Model: {settings.LLM_MODEL}")
     logger.info(f"🔍 Embedding Model: {settings.EMBEDDING_MODEL}")
