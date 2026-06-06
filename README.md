@@ -686,7 +686,3 @@ Return {response, conversation_id, sources}
 **CodeSprint 2026** — by Team CareerPilot
 
 ---
-
-<p align="center">
-  <sub>Built with ❤️ using FastAPI, LangChain, Google Gemini, ChromaDB, Next.js, and PostgreSQL</sub>
-</p>

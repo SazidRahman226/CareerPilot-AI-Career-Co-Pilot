@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = ""
     UPLOAD_DIR: str = ""
 
+    # --- Default User ---
+    DEFAULT_USER_EMAIL: str = ""
+    DEFAULT_USER_PASSWORD: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"

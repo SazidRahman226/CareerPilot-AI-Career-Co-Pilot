@@ -38,14 +38,15 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 CareerPilot Backend Starting...")
     logger.info("=" * 60)
 
-    # Initialize PostgreSQL database (create tables)
-    init_db()
-    logger.info("✅ PostgreSQL database initialized")
 
     # Initialize ChromaDB vector store
     vector_store.initialize()
     logger.info("✅ ChromaDB vector store initialized")
 
+    # Initialize PostgreSQL database (create tables)
+    init_db()
+    logger.info("✅ PostgreSQL database initialized")
+    
     logger.info(f"📦 LLM Model: {settings.LLM_MODEL}")
     logger.info(f"🔍 Embedding Model: {settings.EMBEDDING_MODEL}")
     logger.info(f"🌐 Frontend URL: {settings.FRONTEND_URL}")
