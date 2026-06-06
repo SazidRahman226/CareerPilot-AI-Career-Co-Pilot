@@ -23,9 +23,7 @@ async def search_jobs(
     """
     Search for jobs using natural language.
 
-    Queries two sources:
-    1. SerpAPI Google Web Search (live web scraping)
-    2. SerpAPI Google Jobs (structured listings)
+    Queries SerpAPI (structured listings)
 
     Falls back to mock data if no API keys are configured.
     Results are deduplicated and enriched with fit scores from the user's CV.

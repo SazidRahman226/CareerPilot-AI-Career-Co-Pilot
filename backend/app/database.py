@@ -13,7 +13,11 @@ import json
 import datetime
 
 # PostgreSQL engine
-engine = create_engine(settings.DATABASE_URL)
+engine = create_engine(
+    settings.DATABASE_URL,
+    pool_pre_ping=True,   # Validates connections before executing queries
+    pool_recycle=300      # Re-creates connections every 5 minutes
+)
 
 # Session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

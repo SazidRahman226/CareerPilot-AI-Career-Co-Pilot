@@ -216,59 +216,6 @@ async def search_serpapi_web(query: str, limit: int = 10) -> list[dict]:
         logger.warning(f"Serper.dev web search failed: {e}")
         return []
 
-
-async def search_serper_jobs(query: str, location: str = "", limit: int = 10) -> list[dict]:
-    """
-    Search using Serper.dev Google Jobs endpoint for structured job listings.
-    Returns properly structured job data.
-    """
-    if not settings.SERPAPI_API_KEY:
-        logger.info("Serper API key not configured, skipping jobs search")
-        return []
-
-    try:
-        request_body = {"q": query, "num": limit}
-        if location:
-            request_body["location"] = location
-
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.post(
-                "https://google.serper.dev/job",
-                headers={
-                    "X-API-KEY": settings.SERPAPI_API_KEY,
-                    "Content-Type": "application/json",
-                },
-                json=request_body,
-            )
-            response.raise_for_status()
-            data = response.json()
-
-        jobs = []
-        for result in data.get("jobs", [])[:limit]:
-            jobs.append({
-                "title": result.get("title", ""),
-                "company": result.get("companyName", ""),
-                "location": result.get("location", ""),
-                "salary_range": result.get("salary", ""),
-                "job_type": result.get("source", ""),
-                "deadline": "",
-                "description": result.get("snippet", result.get("description", ""))[:500],
-                "requirements": _extract_requirements_from_desc(result.get("snippet", result.get("description", ""))),
-                "url": result.get("link", ""),
-                "source": "serper_jobs",
-            })
-
-        logger.info(f"Serper.dev jobs search returned {len(jobs)} results")
-        return jobs
-
-    except httpx.HTTPStatusError as e:
-        logger.warning(f"Serper.dev jobs API error (HTTP {e.response.status_code}): {e.response.text[:200]}")
-        return []
-    except Exception as e:
-        logger.warning(f"Serper.dev jobs search failed: {e}")
-        return []
-
-
 def _extract_company_from_snippet(snippet: str) -> str:
     """Try to extract a company name from a search snippet."""
     # Simple heuristic: company names often appear before " - " or " | "
@@ -353,14 +300,7 @@ async def search_jobs(query: str, location: str = "", limit: int = 10, user_id: 
     """
     all_jobs = []
     sources_used = []
-
-    # --- Source 1: Serper.dev Job Search (structured) ---
-    job_results = await search_serper_jobs(query, location, limit)
-    if job_results:
-        all_jobs.extend(job_results)
-        sources_used.append("serper_jobs")
-
-    # --- Source 2: Serper.dev Web Search (general) ---
+    
     web_results = await search_serpapi_web(query, limit)
     if web_results:
         all_jobs.extend(web_results)
