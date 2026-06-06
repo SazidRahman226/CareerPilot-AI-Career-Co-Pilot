@@ -8,7 +8,9 @@ for ORM models. Tables are auto-created on application startup.
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 from app.config import settings
-
+import os
+import json
+import datetime
 
 # PostgreSQL engine
 engine = create_engine(settings.DATABASE_URL)
