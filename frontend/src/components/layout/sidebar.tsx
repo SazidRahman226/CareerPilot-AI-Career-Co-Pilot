@@ -24,6 +24,9 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  CalendarDays,
+  Target,
+  BarChart3,
 } from "lucide-react";
 
 // Navigation items with Lucide icons
@@ -32,6 +35,9 @@ const NAV_ITEMS = [
   { href: "/chat", label: "AI Assistant", icon: MessageSquare, description: "Chat with your co-pilot" },
   { href: "/jobs", label: "Job Hunter", icon: Search, description: "Find matching jobs" },
   { href: "/tracker", label: "Tracker", icon: Kanban, description: "Application Kanban" },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays, description: "Deadlines & schedule" },
+  { href: "/goals", label: "Goals", icon: Target, description: "Set & track targets" },
+  { href: "/progress", label: "Progress", icon: BarChart3, description: "Stats & streaks" },
   { href: "/cv-builder", label: "CV Builder", icon: FileText, description: "Build & export CV" },
   { href: "/profile", label: "Profile", icon: User, description: "CV & settings" },
 ];
