@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker" alt="Docker" />
   <img src="https://img.shields.io/badge/LangChain-0.3-green" alt="LangChain" />
   <img src="https://img.shields.io/badge/Gemini-2.5_Flash-yellow?logo=google" alt="Gemini" />
-  <img src="https://img.shields.io/badge/Redis-7-DC382D?style=flat&logo=redis&logoColor=DC382D" alt="Redis" />
+  <img src="https://img.shields.io/badge/Redis-7-DC382D?style=flat&logo=redis&logoColor=white" alt="Redis" />
 
 
 </p>
@@ -337,8 +337,6 @@ Google Gemini free tier (15 RPM for flash-lite, 5 RPM for flash) is aggressively
 - User-friendly error messages with exact retry countdown
 - Model-aware quota hints
 
----
-
 ## 🗺️ User Paths
 
 ### Path 1: New User Onboarding
@@ -500,9 +498,8 @@ curl -X POST http://localhost:8000/api/cv-builder/generate-pdf \
 ```
 **Expected:** A professional A4 PDF file is saved.
 
----
 
-### Data Flow Diagrams
+## Data Flow Diagrams
 
 #### CV Upload → RAG Retrieval Flow
 
@@ -612,7 +609,6 @@ Return {response, conversation_id, sources}
 | **Run Uvicorn with `--workers 4`** | 4× throughput per instance | Trivial |
 | **Horizontal pod scaling** (3–5 replicas) | Linear throughput increase | Low |
 | **Migrate ChromaDB → Chroma Cloud / Pinecone** | Eliminates disk I/O bottleneck, enables shared vector store | Medium |
-| **~~Add Redis caching~~** | ✅ **Implemented** — 5-layer cache: fit scores, CV status, dashboard stats, CV chunks (doc store), semantic search | Done |
 | **PgBouncer connection pooling** | Handle 10K+ concurrent DB connections | Low |
 | **Upgrade Gemini to paid tier** | Remove 15 RPM rate limit → 2000 RPM | Config change |
 | **Switch embeddings to API-based** (e.g., `text-embedding-004`) | Eliminate PyTorch dependency, reduce memory from 2GB to 256MB per replica | Medium |
@@ -651,7 +647,6 @@ Return {response, conversation_id, sources}
 | 6 | **Single-process DB sessions** | 🟡 Medium | SQLAlchemy sessions are request-scoped; no connection pooling at high concurrency | Add PgBouncer or SQLAlchemy's built-in pool with `pool_size=20, max_overflow=30` |
 | 7 | **Frontend API calls are sequential** | 🟢 Low | Dashboard loads stats, then activity, then renders. No parallel fetching | Use `Promise.all()` for parallel data fetching or React Suspense with streaming |
 
----
 
 ## 🔑 API Keys & Configuration
 
@@ -665,7 +660,14 @@ Return {response, conversation_id, sources}
 
 > Without job API keys, the Job Hunter uses realistic mock data for demo purposes (12 curated job listings).
 
----
+## ☁️ Deployment Platforms
+
+|Service|Hosting Platform|
+|---|---|
+| Frontend | [Vercel](https://vercel.com/) |
+| Backend | [Hugging Face Spaces](https://huggingface.co/spaces) | 
+| PostgreSQL | [Neon Tech](https://neon.com/) |
+| Redis | [Upstash](https://upstash.com/) | 
 
 ## 🏆 Built For
 

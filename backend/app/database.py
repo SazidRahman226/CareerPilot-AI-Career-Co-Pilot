@@ -65,12 +65,14 @@ def _seed_demo_user(db: Session):
     # 1. Look up existing default user
     existing_user = db.query(User).filter(User.email == default_email).first()
 
-    if existing_user:
-        print("ℹ️ Default user already exists. Skipping initialization.")
-        return
-
     # 2. Instantiate User model and hash password
     hashed = hash_password(default_password) 
+
+    if existing_user:
+        existing_user.hashed_password = hashed
+        db.commit()
+        print("ℹ️ Default user already exists. Skipping initialization.")
+        return
     new_user = User(
         name="Default Admin",
         email=default_email,
