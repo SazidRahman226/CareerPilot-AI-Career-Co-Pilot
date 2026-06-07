@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # --- Database ---
     DATABASE_URL: str = ""
 
+    # --- Redis Cache ---
+    REDIS_URL: str = ""
+    REDIS_TTL_SECONDS: int = 300          # Default cache TTL (5 min)
+    REDIS_CHUNK_TTL_SECONDS: int = 86400  # CV chunk cache TTL (24 hr)
+
     # --- Authentication ---
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"

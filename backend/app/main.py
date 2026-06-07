@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.services import vector_store
+from app.services.cache import get_redis
 
 # Configure logging
 logging.basicConfig(
@@ -45,6 +46,14 @@ async def lifespan(app: FastAPI):
     # Initialize PostgreSQL database (create tables)
     init_db()
     logger.info("✅ PostgreSQL database initialized")
+
+    # Initialize Redis cache (non-blocking — app works without it)
+    redis_client = get_redis()
+    if redis_client:
+        logger.info("✅ Redis cache connected")
+    else:
+        logger.warning("⚠️ Redis unavailable — running without cache")
+
     # Seed demo user for easy testing / judging
 
     logger.info(f"📦 LLM Model: {settings.LLM_MODEL}")

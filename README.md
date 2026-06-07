@@ -37,70 +37,36 @@
 
 ```
 CareerPilot/
-├── docker-compose.yml              # Full-stack orchestration (DB + Backend + Frontend)
-├── .dockerignore                    # Docker build exclusions
-├── .gitignore                       # Git exclusions
-├── README.md                        # This file
+├── docker-compose.yml
+├── redis.conf
+├── README.md
 │
-├── backend/                         # Python FastAPI Backend
-│   ├── Dockerfile                   # Production container image
-│   ├── requirements.txt             # Python dependencies (47 packages)
-│   ├── .env.example                 # Environment variable template
-│   ├── run.py                       # Uvicorn launcher entry point
+├── backend/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── .env.example
+│   ├── run.py
 │   └── app/
-│       ├── __init__.py
-│       ├── main.py                  # FastAPI app setup, CORS, lifespan, routers
-│       ├── config.py                # Pydantic Settings (env-based configuration)
-│       ├── database.py              # SQLAlchemy engine, session factory, Base class
-│       │
-│       ├── routers/                 # REST API endpoints
-│       │   ├── auth.py              # POST /api/auth/register, /login, GET /me
-│       │   ├── cv.py                # POST /api/cv/upload, GET /status, DELETE /clear
-│       │   ├── chat.py              # POST /api/chat, GET /history/{id}, DELETE /history
-│       │   ├── jobs.py              # POST /api/jobs/search
-│       │   ├── tracker.py           # CRUD /api/tracker/applications, /todos, /stats
-│       │   └── cv_builder.py        # POST /api/cv-builder/generate-pdf, /generate-docx
-│       │
-│       ├── services/                # Business logic layer
-│       │   ├── agent.py             # LangChain agentic AI (two-tier routing, tools)
-│       │   ├── auth_service.py      # JWT creation/validation, bcrypt password hashing
-│       │   ├── cv_processor.py      # PDF/DOCX text extraction, section-aware chunking
-│       │   ├── cv_generator.py      # ReportLab PDF + python-docx CV generation
-│       │   ├── vector_store.py      # ChromaDB wrapper (embed, store, retrieve, clear)
-│       │   ├── db_memory.py         # LangChain BaseChatMemory backed by PostgreSQL
-│       │   ├── fit_score.py         # Programmatic fit scoring (Jaccard + weighted formula)
-│       │   └── job_search.py        # Multi-source job search with deduplication
-│       │
-│       └── models/                  # Data models
-│           ├── schemas.py           # Pydantic request/response schemas
-│           └── db_models.py         # SQLAlchemy ORM (User, ChatMessage, Application, etc.)
+│       ├── main.py
+│       ├── config.py
+│       ├── database.py
+│       ├── assets/
+│       ├── routers/
+│       ├── services/
+│       └── models/
 │
-└── frontend/                        # Next.js 16 Frontend
-    ├── Dockerfile                   # Container image for dev server
-    ├── package.json                 # Node dependencies
-    ├── next.config.ts               # Next.js configuration
-    ├── tsconfig.json                # TypeScript configuration
-    ├── postcss.config.mjs           # PostCSS + Tailwind CSS 4
+└── frontend/
+    ├── Dockerfile
+    ├── package.json
+    ├── next.config.ts
+    ├── tsconfig.json
+    ├── postcss.config.mjs
     └── src/
-        ├── app/                     # Next.js App Router pages
-        │   ├── layout.tsx           # Root layout with sidebar navigation
-        │   ├── page.tsx             # Dashboard (stats, activity feed, AI nudges)
-        │   ├── globals.css          # Complete design system (55KB, custom CSS)
-        │   ├── login/page.tsx       # Auth page (register + login)
-        │   ├── profile/page.tsx     # CV upload & RAG status
-        │   ├── chat/page.tsx        # AI assistant chat interface
-        │   ├── jobs/page.tsx        # Job search with fit scoring
-        │   ├── tracker/page.tsx     # Kanban board + todos
-        │   └── cv-builder/page.tsx  # AI CV builder form + PDF/DOCX export
+        ├── app/
         ├── components/
-        │   └── layout/              # Sidebar, navbar components
         ├── contexts/
-        │   ├── auth-context.tsx     # JWT auth state management
-        │   └── cv-status-context.tsx # CV upload status context
         ├── hooks/
-        │   └── use-chat.ts         # Chat state management hook
         └── lib/
-            └── api.ts              # Centralized API client (490 LOC)
 ```
 
 ---
@@ -114,6 +80,7 @@ CareerPilot/
 | Dual-source live search | Serper.dev Web Search + Serper.dev Google Jobs endpoint |
 | Smart deduplication | Fuzzy matching (title + company, 75% threshold) via `SequenceMatcher` prevents duplicates across sources |
 | CV-based fit scoring | Every job listing is automatically scored against your CV using the programmatic fit engine |
+| Redis-cached fit scores | Fit scores are cached in Redis per user+job pair, eliminating redundant computation on repeated views |
 | Graceful fallback | Falls back to a curated mock dataset (12 realistic jobs) when no API keys are configured |
 
 ### 2. 📄 Profile & Resume Intelligence (RAG Core)
@@ -125,6 +92,8 @@ CareerPilot/
 | Local free embeddings | `all-MiniLM-L6-v2` via sentence-transformers — no API key needed for embeddings |
 | Per-user vector isolation | Each user gets their own ChromaDB collection (`cv_collection_user_{id}`) |
 | Cosine similarity retrieval | Top-5 most relevant chunks retrieved per query |
+| Redis document store | CV chunk text is cached in Redis (MGET); ChromaDB returns only IDs for lean vector search |
+| Semantic search cache | Query results are cached by MD5 hash, skipping both the embedding model and ChromaDB on repeated identical queries |
 
 ### 3. 🤖 Personal AI Assistant (Agentic Chat)
 | Capability | Description |
@@ -133,6 +102,7 @@ CareerPilot/
 | Smart routing engine | Regex-based pattern matching + keyword detection to classify messages into fast vs. agent path |
 | Three LangChain tools | `retrieve_cv_context` → `compute_fit_score_tool` → `search_jobs_tool`, called in the correct order |
 | DB-backed conversation memory | PostgreSQL-persisted chat history (20-message sliding window) that survives restarts |
+| Redis-cached fit scores | Agent's `compute_fit_score_tool` results are cached per user+job, making repeated tool calls instant |
 | Empty-output recovery | Detects empty agent responses and re-prompts the LLM with tool observations to synthesize an answer |
 | Rate-limit resilience | Exponential backoff retry (5s→10s→20s→40s, max 4 attempts) on Google API 429 errors |
 | Authoritative CV status | System prompt dynamically reflects DB-sourced CV upload status to prevent "please upload your CV" hallucinations |
@@ -151,8 +121,9 @@ CareerPilot/
 | 5-column Kanban board | Wishlist → Applied → Interviewing → Offer → Rejected |
 | Drag-and-drop | HTML5 native drag-and-drop with visual cues |
 | To-do management | CRUD to-do items with priority (low/medium/high), due dates, and categories |
+| Calendar tracking | Interactive calendar view for tracking goals, deadlines, and career milestones |
 | Activity feed | Auto-logged activity (CV uploads, job searches, application changes, to-do updates) |
-| Dashboard stats | Aggregated stats cards, application pipeline visualization, task progress bar, AI nudges |
+| Dashboard stats | Aggregated stats cards, application pipeline visualization, task progress bar, AI nudges (cached in Redis for fast loading) |
 
 ### 6. 🔐 Authentication & Multi-Tenancy
 | Capability | Description |
@@ -193,6 +164,21 @@ Chat history is persisted to PostgreSQL via a custom `DatabaseChatMemory` class 
 ### Singleton LLM & Cached Agents
 - The `ChatGoogleGenerativeAI` instance is created once (singleton) and reused for all requests
 - `AgentExecutor` instances are cached per conversation to avoid rebuilding the LangChain graph
+
+### 5-Layer Redis Caching
+A comprehensive Redis caching system reduces database and vector-store load across 5 layers:
+
+| Layer | Key Pattern | TTL | What's Cached |
+|---|---|---|---|
+| Fit Scores | `fit:{user_id}:{hash}` | 5 min | `compute_fit_score()` results per user+job pair |
+| CV Status | `cv_status:{user_id}` | 5 min | DB profile lookup for `/api/cv/status` |
+| Dashboard Stats | `dash_stats:{user_id}` | 5 min | 7+ aggregate DB queries for `/api/tracker/stats` |
+| CV Chunks (Doc Store) | `cv_chunk:{user_id}:{id}` | 24 hr | Chunk text in Redis; ChromaDB returns only IDs → `MGET` fetches text |
+| Semantic Search | `sem_search:{user_id}:{hash}` | 5 min | Full retrieval results; skips embedding model + ChromaDB on repeated queries |
+
+All layers auto-invalidate on relevant writes (CV upload/clear, application/todo CRUD). Redis is non-blocking — if unavailable, the app gracefully degrades to direct DB/vector queries.
+
+> **Limitation:** The semantic search cache uses exact-match on the query string (via MD5). This catches repeated identical questions (e.g., the agent calling `retrieve_cv_context("skills")` on multiple turns) but not semantically-similar questions. True semantic caching would require embedding the query and doing a nearest-neighbor lookup in a separate index, which adds complexity beyond the current scope.
 
 ### Rate-Limit Resilience
 Google Gemini free tier (15 RPM for flash-lite, 5 RPM for flash) is aggressively rate-limited. The system handles this with:
@@ -283,15 +269,15 @@ CV Builder → Fill structured form (personal info, experience, etc.)
 |---|---|---|
 | Next.js | 16.2.6 | React framework with App Router |
 | React | 19.2.4 | UI library |
-| TypeScript | ^5 | Type safety |
-| Tailwind CSS | ^4 | Utility-first CSS framework |
-| Lucide React | ^1.17.0 | Icon library |
+| TypeScript | 5 | Type safety |
+| Tailwind CSS | 4 | Utility-first CSS framework |
+| Lucide React | 1.17.0 | Icon library |
 | Custom CSS | — | 55KB design system (`globals.css`) with glassmorphism, dark mode, animations |
 
 ### Backend
 | Technology | Version | Purpose |
 |---|---|---|
-| FastAPI | 0.115.0 | High-performance async Python web framework |
+| FastAPI | 0.115.0 | High-performance async Python web framework. **Interactive API docs at [`localhost:8000/docs`](http://localhost:8000/docs)** (Swagger UI) |
 | Uvicorn | 0.30.6 | ASGI server |
 | LangChain | 0.3.25 | Agentic AI orchestration framework |
 | langchain-google-genai | 2.1.4 | Google Gemini LLM integration |
@@ -299,6 +285,7 @@ CV Builder → Fill structured form (personal info, experience, etc.)
 | sentence-transformers | 3.4.1 | Local embedding model (`all-MiniLM-L6-v2`) |
 | SQLAlchemy | 2.0.36 | ORM for PostgreSQL |
 | psycopg2-binary | 2.9.10 | PostgreSQL driver |
+| Redis (redis-py) | 5.0+ | 5-layer caching: fit scores, CV status, dashboard stats, CV chunks, semantic search |
 | ReportLab | 4.2.5 | PDF generation for CV builder |
 | python-docx | 1.1.2 | DOCX generation for CV builder |
 | python-jose | 3.3.0 | JWT token handling |
@@ -312,6 +299,7 @@ CV Builder → Fill structured form (personal info, experience, etc.)
 | Technology | Version | Purpose |
 |---|---|---|
 | PostgreSQL | 16 (Alpine) | Primary relational database |
+| Redis | 7 (Alpine) | In-memory cache with AOF persistence (LRU eviction, 2GB limit) |
 | Docker Compose | — | Full-stack container orchestration |
 | Python | 3.11-slim | Backend runtime |
 | Node.js | 20 (Alpine) | Frontend runtime |
@@ -332,7 +320,7 @@ CV Builder → Fill structured form (personal info, experience, etc.)
 ```bash
 # 1. Clone the repository
 git clone https://github.com/SazidRahman226/CareerPilot-AI-Career-Co-Pilot
-
+cd ./CareerPilot-AI-Career-Co-Pilot/
 # 2. Configure environment
 cp backend/.env.example backend/.env
 # Edit backend/.env → add your GOOGLE_API_KEY
@@ -343,8 +331,10 @@ docker compose up --build
 # 4. Open in browser
 # Frontend:  http://localhost:3000
 # Backend:   http://localhost:8000
-# API Docs:  http://localhost:8000/docs
+# API Docs:  http://localhost:8000/docs  ← Full Swagger UI with all endpoints
 ```
+
+> 📘 **API Documentation:** Full interactive API documentation is available at **[`http://localhost:8000/docs`](http://localhost:8000/docs)** powered by **Swagger UI** (auto-generated by FastAPI). You can test every endpoint directly from the browser — authenticate, upload CVs, search jobs, and more.
 
 ### Local Development (Without Docker)
 
@@ -470,9 +460,9 @@ curl -X POST http://localhost:8000/api/cv-builder/generate-pdf \
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         CLIENT (Browser)                            │
 │                    Next.js 16 (App Router)                          │
-│    ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐  │
-│    │Dashboard │ │  Chat    │ │   Jobs   │ │ Tracker  │ │CV Build│  │
-│    └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └───┬────┘  │
+│    ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐   │
+│    │Dashboard │ │  Chat    │ │   Jobs   │ │ Tracker  │ │CV Build│   │
+│    └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └───┬────┘   │
 │         │            │            │             │           │       │
 │         └────────────┴────────────┴─────────────┴───────────┘       │
 │                              │  HTTPS / REST                        │
@@ -482,14 +472,14 @@ curl -X POST http://localhost:8000/api/cv-builder/generate-pdf \
 ┌──────────────────────────────────────────────────────────────────────┐
 │                     BACKEND (FastAPI + Uvicorn)                      │
 │                                                                      │
-│  ┌─────────┐   ┌────────────────────────────────────┐               │
+│  ┌─────────┐   ┌─────────────────────────────────────┐               │
 │  │  Auth   │   │        AI Agent Service             │               │
-│  │ (JWT +  │   │  ┌─────────────────────────────┐   │               │
-│  │ bcrypt) │   │  │  Smart Router                │   │               │
-│  └────┬────┘   │  │  (regex + keyword detect)    │   │               │
-│       │        │  └──────┬───────────┬───────────┘   │               │
+│  │ (JWT +  │   │  ┌─────────────────────────────┐    │               │
+│  │ bcrypt) │   │  │  Smart Router               │    │               │
+│  └────┬────┘   │  │  (regex + keyword detect)   │    │               │
+│       │        │  └──────┬───────────┬──────────┘    │               │
 │       │        │         │           │               │               │
-│       │        │    Fast Path    Agent Path           │               │
+│       │        │    Fast Path    Agent Path          │               │
 │       │        │   (Direct LLM)  (LangChain)         │               │
 │       │        │         │      ┌────┴────┐          │               │
 │       │        │         │      │  Tools  │          │               │
@@ -500,20 +490,20 @@ curl -X POST http://localhost:8000/api/cv-builder/generate-pdf \
 │       │        └─────────┴──────────┘│               │               │
 │       │                              │               │               │
 │  ┌────┴──────────────────────────────┴───────────┐   │               │
-│  │               Service Layer                    │   │               │
-│  │  ┌──────────┐ ┌───────────┐ ┌──────────────┐ │   │               │
-│  │  │ CV Proc  │ │ Fit Score │ │  Job Search  │ │   │               │
-│  │  │ (parse + │ │ (Jaccard  │ │  (Serper.dev │ │   │               │
-│  │  │  chunk)  │ │ + weights)│ │  + fallback) │ │   │               │
-│  │  └──────────┘ └───────────┘ └──────────────┘ │   │               │
+│  │               Service Layer                   │   │               │
+│  │  ┌──────────┐ ┌───────────┐ ┌──────────────┐  │   │               │
+│  │  │ CV Proc  │ │ Fit Score │ │  Job Search  │  │   │               │
+│  │  │ (parse + │ │ (Jaccard  │ │  (Serper.dev │  │   │               │
+│  │  │  chunk)  │ │ + weights)│ │  + fallback) │  │   │               │
+│  │  └──────────┘ └───────────┘ └──────────────┘  │   │               │
 │  └───────────────────────────────────────────────┘   │               │
 │                                                      │               │
-│  ┌───────────────────┐    ┌──────────────────────┐   │               │
-│  │    PostgreSQL      │    │      ChromaDB        │   │               │
-│  │ (Users, Chat,      │    │  (Vector embeddings, │   │               │
-│  │  Apps, Todos,      │    │   per-user collections│  │               │
-│  │  Activities)       │    │   cosine similarity)  │  │               │
-│  └───────────────────┘    └──────────────────────┘   │               │
+│  ┌───────────────────┐    ┌───────────────────────┐  │               │
+│  │    PostgreSQL     │    │      ChromaDB         │  │               │
+│  │ (Users, Chat,     │    │  (Vector embeddings,  │  │               │
+│  │  Apps, Todos,     │    │   per-user collections│  │               │
+│  │  Activities)      │    │   cosine similarity)  │  │               │
+│  └───────────────────┘    └───────────────────────┘  │               │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -627,7 +617,7 @@ Return {response, conversation_id, sources}
 | **Run Uvicorn with `--workers 4`** | 4× throughput per instance | Trivial |
 | **Horizontal pod scaling** (3–5 replicas) | Linear throughput increase | Low |
 | **Migrate ChromaDB → Chroma Cloud / Pinecone** | Eliminates disk I/O bottleneck, enables shared vector store | Medium |
-| **Add Redis caching** | Cache fit scores, CV status, dashboard stats; reduce DB load | Medium |
+| **~~Add Redis caching~~** | ✅ **Implemented** — 5-layer cache: fit scores, CV status, dashboard stats, CV chunks (doc store), semantic search | Done |
 | **PgBouncer connection pooling** | Handle 10K+ concurrent DB connections | Low |
 | **Upgrade Gemini to paid tier** | Remove 15 RPM rate limit → 2000 RPM | Config change |
 | **Switch embeddings to API-based** (e.g., `text-embedding-004`) | Eliminate PyTorch dependency, reduce memory from 2GB to 256MB per replica | Medium |
@@ -675,6 +665,7 @@ Return {response, conversation_id, sources}
 | `GOOGLE_API_KEY` | ✅ Yes | [Google AI Studio](https://aistudio.google.com/apikey) | 15 RPM / 1000 RPD (flash-lite) |
 | `SERPAPI_API_KEY` | ❌ Optional | [Serper.dev](https://serper.dev/) | 2,500 searches free |
 | `DATABASE_URL` | ✅ Yes (auto in Docker) | PostgreSQL connection string | — |
+| `REDIS_URL` | ✅ Yes (auto in Docker) | Redis connection string (e.g. `redis://redis:6379/0`) | — |
 | `JWT_SECRET_KEY` | ✅ Yes | Any random 32+ char string | — |
 
 > Without job API keys, the Job Hunter uses realistic mock data for demo purposes (12 curated job listings).
@@ -683,10 +674,7 @@ Return {response, conversation_id, sources}
 
 ## 🏆 Built For
 
-**CodeSprint 2026** — by Team CareerPilot
+**CodeSprint 2026** — by Team codeKomAiBeshi
 
 ---
 
-<p align="center">
-  <sub>Built with ❤️ using FastAPI, LangChain, Google Gemini, ChromaDB, Next.js, and PostgreSQL</sub>
-</p>

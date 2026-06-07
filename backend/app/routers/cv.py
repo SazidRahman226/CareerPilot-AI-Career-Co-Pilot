@@ -18,7 +18,7 @@ from app.models.db_models import User, UserProfile
 from app.services import cv_processor, vector_store
 from app.services.auth_service import get_current_user
 from app.models.schemas import CVUploadResponse, CVStatusResponse
-
+from app.services.cache import invalidate_user_cache, cache_get, cache_set
 
 def _invalidate_agent_cache_for_user(user_id: int) -> None:
     """
@@ -123,6 +123,9 @@ async def upload_cv(
 
     _invalidate_agent_cache_for_user(current_user.id)
 
+    # Invalidate all Redis cache for this user (CV changed)
+    invalidate_user_cache(current_user.id)
+
     return CVUploadResponse(
         success=True,
         message=f"CV processed successfully! Found {len(result['chunks'])} content chunks across {len(result['sections_detected'])} sections.",
@@ -138,20 +141,30 @@ async def get_cv_status(
     db: Session = Depends(get_db),
 ):
     """Check if the authenticated user has a CV uploaded and get its metadata."""
+
+    cache_key = f"cv_status:{current_user.id}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return CVStatusResponse(**cached)
+
     profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
 
     if not profile or not profile.cv_filename:
-        return CVStatusResponse(uploaded=False)
+        result = CVStatusResponse(uploaded=False)
+        cache_set(cache_key, result.model_dump())
+        return result
 
     sections = json.loads(profile.cv_sections_json) if profile.cv_sections_json else []
 
-    return CVStatusResponse(
+    result = CVStatusResponse(
         uploaded=True,
         filename=profile.cv_filename,
         chunk_count=profile.cv_chunk_count,
         sections_detected=sections,
         upload_timestamp=profile.cv_uploaded_at.isoformat() if profile.cv_uploaded_at else "",
     )
+    cache_set(cache_key, result.model_dump())
+    return result
 
 
 @router.delete("/clear")
@@ -171,5 +184,8 @@ async def clear_cv(
         db.commit()
 
     _invalidate_agent_cache_for_user(current_user.id)
+
+    # Invalidate all Redis cache for this user (CV cleared)
+    invalidate_user_cache(current_user.id)
 
     return {"success": True, "message": "CV data cleared successfully."}

@@ -18,6 +18,7 @@ from difflib import SequenceMatcher
 from app.config import settings
 from app.services import fit_score as fit_score_service
 from app.services import vector_store
+from app.services.cache import cache_get, cache_set, make_hash
 
 logger = logging.getLogger(__name__)
 
@@ -318,15 +319,29 @@ async def search_jobs(query: str, location: str = "", limit: int = 10, user_id: 
     # --- Deduplicate across sources ---
     unique_jobs = deduplicate_jobs(all_jobs)
 
-    # --- Enrich with fit scores ---
-    cv_text = vector_store.get_full_text(user_id) if user_id else ""
+    # --- Enrich with fit scores (cached) ---
+
+    cv_text = ""
+    if user_id:
+        # Cache the full CV text (expensive ChromaDB get_all + sort)
+        cv_cache_key = f"cv_fulltext:{user_id}"
+        cv_text = cache_get(cv_cache_key)
+        if cv_text is None:
+            cv_text = vector_store.get_full_text(user_id)
+            if cv_text:
+                cache_set(cv_cache_key, cv_text, ttl=settings.REDIS_CHUNK_TTL_SECONDS)
+
     enriched_jobs = []
 
     for job in unique_jobs[:limit]:
         job_desc = f"{job['title']} at {job['company']}. {job['description']}. Requirements: {', '.join(job.get('requirements', []))}"
 
         if cv_text:
-            score_result = fit_score_service.compute_fit_score(cv_text, job_desc)
+            fit_cache_key = f"fit:{user_id}:{make_hash(job_desc[:200])}"
+            score_result = cache_get(fit_cache_key)
+            if score_result is None:
+                score_result = fit_score_service.compute_fit_score(cv_text, job_desc)
+                cache_set(fit_cache_key, score_result)
             job["fit_score"] = score_result["score"]
             job["fit_breakdown"] = score_result["breakdown"]
             job["match_reasons"] = score_result["match_reasons"]

@@ -45,6 +45,7 @@ from app.services import fit_score as fit_score_service
 from app.services import job_search as job_search_service
 from app.services.db_memory import DatabaseChatMemory
 import asyncio
+from app.services.cache import cache_get, cache_set, make_hash
 
 logger = logging.getLogger(__name__)
 
@@ -491,7 +492,14 @@ def compute_fit_score_tool(job_description: str) -> str:
     if not cv_text:
         return json.dumps({"error": "No CV uploaded. Please upload a CV first."})
 
+    # Check Redis cache first
+    fit_cache_key = f"fit:{user_id}:{make_hash(job_description[:200])}"
+    cached = cache_get(fit_cache_key)
+    if cached is not None:
+        return json.dumps(cached, indent=2)
+
     result = fit_score_service.compute_fit_score(cv_text, job_description)
+    cache_set(fit_cache_key, result)
     return json.dumps(result, indent=2)
 
 

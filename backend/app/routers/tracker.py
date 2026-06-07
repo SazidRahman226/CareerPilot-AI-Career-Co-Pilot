@@ -21,6 +21,7 @@ from app.models.schemas import (
     ActivityResponse, DashboardStats,
 )
 from app.services.auth_service import get_current_user
+from app.services.cache import cache_delete_exact, cache_get, cache_set
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tracker", tags=["Tracker"])
@@ -40,6 +41,9 @@ def _log_activity(db: Session, user_id: int, activity_type: str, description: st
     )
     db.add(activity)
     db.commit()
+
+    # Invalidate dashboard stats cache (activity feed changed)
+    cache_delete_exact(f"dash_stats:{user_id}")
 
 
 # ============================
@@ -227,6 +231,12 @@ def get_dashboard_stats(
     db: Session = Depends(get_db),
 ):
     """Get aggregated stats for the authenticated user's dashboard."""
+
+    cache_key = f"dash_stats:{current_user.id}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return DashboardStats(**cached)
+
     # Application counts by status (user-scoped)
     base_query = db.query(Application).filter(Application.user_id == current_user.id)
     total = base_query.count()
@@ -264,7 +274,7 @@ def get_dashboard_stats(
         for a in recent
     ]
 
-    return DashboardStats(
+    result = DashboardStats(
         total_applications=total,
         applied_count=applied,
         interviewing_count=interviewing,
@@ -275,6 +285,8 @@ def get_dashboard_stats(
         todos_total=todos_total,
         recent_activities=recent_activities,
     )
+    cache_set(cache_key, result.model_dump(mode="json"))
+    return result
 
 
 @router.get("/activities", response_model=list[ActivityResponse])
