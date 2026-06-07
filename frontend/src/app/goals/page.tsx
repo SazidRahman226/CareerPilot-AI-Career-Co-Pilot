@@ -846,7 +846,7 @@ export default function GoalsPage() {
                   required
                 />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="form-row-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div className="form-group">
                   <label>Category</label>
                   <select

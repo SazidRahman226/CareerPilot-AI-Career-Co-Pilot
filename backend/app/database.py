@@ -60,7 +60,7 @@ def _seed_demo_user(db: Session):
 
     """Creates a default system user, processes and embeds their CV into ChromaDB."""
     default_email = getattr(settings, "DEFAULT_USER_EMAIL", "user@example.com")
-    default_password = getattr(settings, "DEFAULT_USER_PASSWORD", "user")
+    default_password = getattr(settings, "DEFAULT_USER_PASSWORD", "user123")
     
     # 1. Look up existing default user
     existing_user = db.query(User).filter(User.email == default_email).first()

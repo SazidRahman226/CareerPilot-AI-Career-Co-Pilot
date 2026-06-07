@@ -128,7 +128,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Two column layout: Activity + Todos Progress */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <div className="dashboard-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         {/* Activity Feed */}
         <div className="card">
           <div className="card__header">

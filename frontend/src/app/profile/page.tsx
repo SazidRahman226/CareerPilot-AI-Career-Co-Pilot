@@ -152,7 +152,7 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="profile-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         {/* Upload Zone */}
         <div>
           <div
@@ -267,7 +267,7 @@ export default function ProfilePage() {
               </div>
 
               {/* Stats */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+              <div className="cv-analysis-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
                 <div style={{
                   padding: 16,
                   background: "var(--bg-elevated)",

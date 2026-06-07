@@ -482,7 +482,7 @@ export default function CVBuilderPage() {
           </div>
 
           {/* Certifications, Awards, Languages */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+          <div className="cv-trio-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
             {/* Certifications */}
             <div className="cv-section-card">
               <h3 className="cv-section-card__title"><Award size={16} /> Certifications</h3>

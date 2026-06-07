@@ -4352,3 +4352,372 @@ body {
 .cal-reminders__item--task svg {
   color: var(--color-warning);
 }
+
+/* ============================
+   Mobile Responsive (full pass)
+   ============================ */
+
+/* Hamburger button � only shown on mobile */
+.mobile-menu-btn {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 60;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.mobile-menu-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--color-primary);
+}
+
+/* Backdrop behind the mobile drawer */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 55;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-base);
+}
+
+.sidebar-backdrop--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (max-width: 768px) {
+  /* Show the hamburger */
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  /* Sidebar is now a fixed drawer on mobile */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: 280px;
+    max-width: 85vw;
+    z-index: 70;
+    transform: translateX(-100%);
+    transition: transform var(--transition-base);
+    box-shadow: var(--shadow-xl);
+    /* Override the desktop width/position rules so the drawer fits the screen */
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .sidebar--collapsed {
+    /* Never let the desktop collapsed state squeeze the mobile drawer */
+    width: 280px;
+  }
+
+  .sidebar__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .main-content {
+    margin-left: 0;
+    max-width: 100vw;
+    padding: 16px;
+    padding-top: 64px; /* leave room for the floating hamburger */
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .stat-card {
+    padding: 14px;
+  }
+
+  .stat-card__value {
+    font-size: 22px;
+  }
+
+  .stat-card__label {
+    font-size: 11px;
+  }
+
+  .jobs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kanban {
+    flex-direction: column;
+    overflow-x: visible;
+  }
+
+  .kanban__column {
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+  .message {
+    max-width: 90%;
+  }
+
+  .cv-builder-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-preview-panel {
+    position: static;
+    max-height: 600px;
+  }
+
+  /* Page headers � stack title + button */
+  .page-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .page-header__title {
+    font-size: 22px;
+  }
+
+  /* Inline-grid sections in the dashboard (Activity + Progress) */
+  .dashboard-row {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Inline-grid sections in the profile page (Upload + Analysis) */
+  .profile-row {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .profile-row .cv-analysis-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Quick actions grid */
+  .quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-action {
+    padding: 12px;
+  }
+
+  /* Search bar */
+  .search-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-bar__input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Job card header � wrap title + fit score */
+  .job-card__header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .job-card__meta {
+    flex-wrap: wrap;
+  }
+
+  .job-card__actions {
+    flex-wrap: wrap;
+  }
+
+  .job-card__actions .btn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Modals */
+  .modal,
+  .modal-content,
+  .modal--detail {
+    width: 100%;
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 20px;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+  }
+
+  /* Detail modal info grid */
+  .detail-modal__info {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-modal__header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .detail-modal__actions {
+    flex-direction: column;
+  }
+
+  .detail-modal__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Calendar layout */
+  .cal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cal-cell {
+    min-height: 56px;
+    padding: 4px;
+  }
+
+  .cal-cell__day {
+    font-size: 11px;
+  }
+
+  .cal-weekday {
+    font-size: 10px;
+    padding: 6px 0;
+  }
+
+  .cal-nav__title {
+    font-size: 15px;
+  }
+
+  /* Chat */
+  .chat-input-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chat-input-bar .input,
+  .chat-input-bar textarea {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .chat-input-bar .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Goals */
+  .goals-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px;
+  }
+
+  .goal-card__row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Progress */
+  .prog-grid,
+  .progress-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px;
+  }
+
+  /* Toast / notifications */
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+
+  /* Generic: prevent anything from forcing horizontal overflow */
+  body {
+    overflow-x: hidden;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .main-content {
+    padding: 12px;
+    padding-top: 60px;
+  }
+
+  .page-header__title {
+    font-size: 20px;
+  }
+
+  .btn {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}
+
+/* Mobile-only helpers — hidden on desktop */
+@media (min-width: 769px) {
+  .sidebar__close {
+    display: none;
+  }
+}
+
+/* Extra small-screen refinements (extends the 768px block above) */
+@media (max-width: 768px) {
+  .cv-trio-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .form-row-2 {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-header .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Long-running lists (todo rows, activity items) */
+  .todo-item,
+  .activity-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
