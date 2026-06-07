@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import AppShell from "@/components/layout/app-shell";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -29,8 +30,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
+      <body
+        className={`${inter.variable} antialiased`}
+        suppressHydrationWarning
+      >
         <AppShell>{children}</AppShell>
+        <Analytics />
       </body>
     </html>
   );
