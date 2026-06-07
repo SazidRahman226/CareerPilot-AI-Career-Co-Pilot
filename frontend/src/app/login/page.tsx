@@ -54,7 +54,9 @@ export default function LoginPage() {
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Authentication failed. Please try again."
+        err instanceof Error
+          ? err.message
+          : "Authentication failed. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -66,13 +68,15 @@ export default function LoginPage() {
     setError("");
     setIsRegister(false);
     setEmail("user@example.com");
-    setPassword("user");
+    setPassword("user123");
     setLoading(true);
     try {
-      await login("user@example.com", "user");
+      await login("user@example.com", "user123");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Demo login failed. Please try again."
+        err instanceof Error
+          ? err.message
+          : "Demo login failed. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -91,7 +95,9 @@ export default function LoginPage() {
       <div className="auth-card">
         {/* Logo */}
         <div className="auth-card__logo">
-          <span className="auth-card__logo-icon"><Compass size={24} /></span>
+          <span className="auth-card__logo-icon">
+            <Compass size={24} />
+          </span>
           <h1 className="auth-card__logo-text">CareerPilot</h1>
           <p className="auth-card__logo-sub">AI Career Co-Pilot</p>
         </div>
@@ -100,13 +106,19 @@ export default function LoginPage() {
         <div className="auth-tabs">
           <button
             className={`auth-tab ${!isRegister ? "auth-tab--active" : ""}`}
-            onClick={() => { setIsRegister(false); setError(""); }}
+            onClick={() => {
+              setIsRegister(false);
+              setError("");
+            }}
           >
             Sign In
           </button>
           <button
             className={`auth-tab ${isRegister ? "auth-tab--active" : ""}`}
-            onClick={() => { setIsRegister(true); setError(""); }}
+            onClick={() => {
+              setIsRegister(true);
+              setError("");
+            }}
           >
             Create Account
           </button>
@@ -179,25 +191,19 @@ export default function LoginPage() {
           )}
 
           {/* Error */}
-          {error && (
-            <div className="auth-error">
-              ⚠️ {error}
-            </div>
-          )}
+          {error && <div className="auth-error">⚠️ {error}</div>}
 
           {/* Submit */}
-          <button
-            type="submit"
-            className="auth-submit"
-            disabled={loading}
-          >
+          <button type="submit" className="auth-submit" disabled={loading}>
             {loading ? (
               <span className="auth-submit__loading">
                 <span className="auth-submit__spinner" />
                 {isRegister ? "Creating Account..." : "Signing In..."}
               </span>
+            ) : isRegister ? (
+              "Create Account"
             ) : (
-              isRegister ? "Create Account" : "Sign In"
+              "Sign In"
             )}
           </button>
 
@@ -222,7 +228,10 @@ export default function LoginPage() {
               Already have an account?{" "}
               <button
                 className="auth-link"
-                onClick={() => { setIsRegister(false); setError(""); }}
+                onClick={() => {
+                  setIsRegister(false);
+                  setError("");
+                }}
               >
                 Sign in
               </button>
@@ -232,7 +241,10 @@ export default function LoginPage() {
               Don&apos;t have an account?{" "}
               <button
                 className="auth-link"
-                onClick={() => { setIsRegister(true); setError(""); }}
+                onClick={() => {
+                  setIsRegister(true);
+                  setError("");
+                }}
               >
                 Create one
               </button>
