@@ -13,7 +13,7 @@ from app.config import settings
 import logging
 import json
 import os
-from app.services.cache import cache_mset, cache_get, cache_set, make_hash, cache_delete, cache_delete_exact
+from app.services.cache import cache_mset, cache_get, cache_set, make_hash, cache_delete, cache_delete_exact, cache_mget
 
 logger = logging.getLogger(__name__)
 
