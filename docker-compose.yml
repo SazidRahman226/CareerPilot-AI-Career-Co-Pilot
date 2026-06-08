@@ -44,14 +44,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - backend_data:/app/data          # Persist ChromaDB + uploads
-      - model_cache:/root/.cache        # Cache sentence-transformers / HF models
-      - chroma_onnx:/root/.cache/chroma # Cache the chromadb ONNX embedding model
+      - backend_data:/app/data          # Persist ChromaDB + uploads + HF_HOME + ONNX cache
       - ./backend/app:/app/app          # Hot reload in development
     env_file:
       - ./backend/.env
     environment:
       - HF_HOME=/app/data/huggingface
+      - CHROMA_ONNX_MODEL_PATH=/app/data/chroma_onnx
     depends_on:
       db:
         condition: service_healthy
@@ -86,8 +85,4 @@ volumes:
   redis_data:
     driver: local
   backend_data:
-    driver: local
-  model_cache:
-    driver: local
-  chroma_onnx:
     driver: local

@@ -1,7 +1,3 @@
-# ===== Hugging Face Space Metadata =====
-# Tell Hugging Face to route traffic to port 8000 instead of 7860
-# machine_args: app_port=8000
-
 # ===== CareerPilot Backend Dockerfile =====
 FROM python:3.11-slim
 
@@ -30,11 +26,19 @@ RUN python -c "from chromadb.utils import embedding_functions; \
 # Copy application code and ensure the Hugging Face user owns it
 COPY --chown=user:user . .
 
-# Create data directories and ensure permissions
-RUN mkdir -p data/uploads data/chroma_db && chown -R user:user data
+# Create data directories (including HF cache and ONNX cache) and ensure permissions
+RUN mkdir -p data/uploads data/chroma_db data/huggingface data/chroma_onnx \
+    && chown -R user:user data
 
 # Disable ChromaDB telemetry to avoid posthog errors
+# Redirect all caches to known, writable locations inside /app/data
 ENV ANONYMIZED_TELEMETRY=false
+ENV HF_HOME=/app/data/huggingface
+ENV CHROMA_ONNX_MODEL_PATH=/app/data/chroma_onnx
+
+# Copy and set the entrypoint script (ensures dirs exist at runtime)
+COPY --chown=user:user entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Switch to the required non-root user
 USER user
@@ -42,5 +46,6 @@ USER user
 # Expose port
 EXPOSE 8000
 
-# Run the application
+# Use entrypoint to ensure writable dirs, then run the app
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "run.py"]
