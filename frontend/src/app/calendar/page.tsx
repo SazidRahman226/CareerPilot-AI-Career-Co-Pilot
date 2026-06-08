@@ -124,7 +124,7 @@ function fireNotification(title: string, body: string, tag: string) {
   try {
     const notif = new Notification(title, {
       body,
-      icon: "/favicon.ico",
+      icon: "/icon.png",
       tag,
       silent: false,
     });
@@ -740,10 +740,10 @@ export default function CalendarPage() {
             <h3 className="cal-detail__title">
               {selectedDate
                 ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  })
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })
                 : "Select a day"}
             </h3>
             {selectedDate && (
@@ -841,10 +841,10 @@ export default function CalendarPage() {
                 const diff = (new Date(e.date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
                 return diff > 0 && diff <= 3;
               }).length === 0 && (
-                <p style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 0" }}>
-                  No upcoming deadlines — you&apos;re all clear! 🎉
-                </p>
-              )}
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 0" }}>
+                    No upcoming deadlines — you&apos;re all clear! 🎉
+                  </p>
+                )}
             </div>
           )}
         </div>
