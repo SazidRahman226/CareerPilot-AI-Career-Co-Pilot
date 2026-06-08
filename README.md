@@ -24,7 +24,7 @@
 [Click here to view the problem statement](Codesprint_poridhi.pdf)
 
 ## 🌐 Live Demo
-The project is deployed and accessible at: https://career-pilot-sepia-two.vercel.app/
+The project is deployed and accessible at: https://career-pilot-cs.netlify.app/
 
 
 ## 📑 Table of Contents
