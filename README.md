@@ -664,7 +664,7 @@ Return {response, conversation_id, sources}
 
 |Service|Hosting Platform|
 |---|---|
-| Frontend | [Vercel](https://vercel.com/) |
+| Frontend | [Netlify](https://www.netlify.com/) |
 | Backend | [Hugging Face Spaces](https://huggingface.co/spaces) | 
 | PostgreSQL | [Neon Tech](https://neon.com/) |
 | Redis | [Upstash](https://upstash.com/) | 
